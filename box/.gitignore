@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite
+*.log
+.env
+.venv/
+node_modules/
+dist/
+build/
+coach.zip

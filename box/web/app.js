@@ -11,6 +11,9 @@ const state = {
   latestPose: null,
   cameraReady: false,
   usernameChecked: "",
+  memberFilter: "all",
+  memberSearch: "",
+  showMemberForm: false,
 };
 
 const navItems = [
@@ -257,51 +260,140 @@ function renderDashboard() {
 }
 
 function renderMembers() {
-  const rows = state.members.map((member, index) => {
-    const joined = dateOffset(index * 17 + 12);
-    const recent = dateOffset(index * 2 + 1);
-    const plan = index % 2 === 0 ? "복싱 6개월" : "PT 10회";
-    const status = index % 3 === 0 ? "재등록" : "정상";
+  const enriched = state.members.map((member, index) => ({
+    ...member,
+    index,
+    usage: memberUsageState(member, index),
+    recent: dateOffset(index * 2 + 1),
+  }));
+  const filtered = enriched.filter((member) => {
+    const haystack = `${member.name} ${member.username || ""} ${member.phone || ""} ${member.email || ""}`.toLowerCase();
+    const matchesSearch = haystack.includes(state.memberSearch.toLowerCase());
+    const matchesFilter = state.memberFilter === "all" || member.usage === state.memberFilter;
+    return matchesSearch && matchesFilter;
+  });
+  const activeCount = enriched.filter((member) => member.usage === "active").length;
+  const expiredCount = enriched.filter((member) => member.usage === "expired").length;
+  const rows = filtered.map((member) => {
     return `<tr>
       <td><span class="avatar">${member.name.slice(0, 1)}</span>${member.name}</td>
+      <td>${member.username || "-"}</td>
       <td>${member.phone || "-"}</td>
+      <td>${member.email || "-"}</td>
       <td>${member.birthdate || "-"}</td>
-      <td><span class="badge">${member.gender || "-"}</span></td>
-      <td>${recent}</td>
-      <td>${plan}</td>
-      <td>${status}</td>
-      <td>${joined}</td>
+      <td>${member.recent}</td>
     </tr>`;
   }).join("");
+  const form = state.showMemberForm ? memberCreateForm() : "";
   $("#viewContent").innerHTML = `
     <section class="admin-board">
       <div class="admin-toolbar">
         <div class="segmented">
-          <button class="active">전체 회원 ${state.members.length}</button>
-          <button>운동회원</button>
-          <button>만료 예정</button>
-          <button>휴면</button>
+          <button class="${state.memberFilter === "all" ? "active" : ""}" data-member-filter="all">전체 회원 ${enriched.length}</button>
+          <button class="${state.memberFilter === "active" ? "active" : ""}" data-member-filter="active">이용중 ${activeCount}</button>
+          <button class="${state.memberFilter === "expired" ? "active" : ""}" data-member-filter="expired">만료 ${expiredCount}</button>
         </div>
-        <label class="search-box"><span>검색</span><input placeholder="이름, 아이디, 연락처 검색" /></label>
+        <label class="search-box"><span>검색</span><input id="memberSearch" value="${escapeHtml(state.memberSearch)}" placeholder="이름, 아이디, 연락처 검색" /></label>
       </div>
-      <div class="filter-row">
-        <button>상태</button><button>가입일</button><button>성별</button><button>이용권</button><button>담당 직원</button>
-      </div>
+      ${form}
       <div class="table-wrap">
         <table class="admin-table">
           <thead>
             <tr>
-              <th>이름</th><th>전화번호</th><th>생년월일</th><th>성별</th><th>최근 출석일</th><th>이용권</th><th>상태</th><th>가입일</th>
+              <th>이름</th><th>아이디</th><th>전화번호</th><th>이메일</th><th>생년월일</th><th>최근 출석일</th>
             </tr>
           </thead>
-          <tbody>${rows || `<tr><td colspan="8">등록된 회원이 없습니다.</td></tr>`}</tbody>
+          <tbody>${rows || `<tr><td colspan="6">조건에 맞는 회원이 없습니다.</td></tr>`}</tbody>
         </table>
       </div>
       <div class="admin-actions">
-        <button class="ghost">엑셀 다운로드</button>
-        <button>회원 등록</button>
+        <button class="ghost" id="downloadMembers">엑셀 다운로드</button>
+        <button id="toggleMemberForm">${state.showMemberForm ? "등록 취소" : "회원 등록"}</button>
       </div>
     </section>`;
+  document.querySelectorAll("[data-member-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.memberFilter = button.dataset.memberFilter;
+      renderMembers();
+    });
+  });
+  $("#memberSearch").addEventListener("input", (event) => {
+    state.memberSearch = event.target.value;
+    renderMembers();
+  });
+  $("#downloadMembers").addEventListener("click", () => downloadMembersCsv(filtered));
+  $("#toggleMemberForm").addEventListener("click", () => {
+    state.showMemberForm = !state.showMemberForm;
+    renderMembers();
+  });
+  const formEl = $("#memberCreateForm");
+  if (formEl) {
+    formEl.addEventListener("submit", createMemberFromForm);
+  }
+}
+
+function memberCreateForm() {
+  return `<form id="memberCreateForm" class="member-create-form">
+    <input name="username" placeholder="아이디" required />
+    <input name="name" placeholder="이름" required />
+    <input name="email" type="email" placeholder="이메일" required />
+    <input name="password" type="password" placeholder="비밀번호: 특수문자 포함 8자리 이상" required />
+    <input name="password_confirm" type="password" placeholder="비밀번호 확인" required />
+    <input name="phone" placeholder="전화번호" />
+    <input name="birthdate" type="date" />
+    <select name="gender">
+      <option value="">성별 선택</option>
+      <option value="male">남성</option>
+      <option value="female">여성</option>
+      <option value="other">기타</option>
+    </select>
+    <button>등록</button>
+    <p id="memberCreateMessage" class="form-message"></p>
+  </form>`;
+}
+
+async function createMemberFromForm(event) {
+  event.preventDefault();
+  const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+  $("#memberCreateMessage").textContent = "";
+  try {
+    if (body.password !== body.password_confirm) throw new Error("비밀번호 확인이 일치하지 않습니다.");
+    if (!isValidPassword(body.password)) throw new Error("비밀번호는 특수문자를 포함해 8자리 이상이어야 합니다.");
+    const created = await api("/members", {
+      method: "POST",
+      body: JSON.stringify(body),
+    });
+    state.members.push(created.member);
+    state.showMemberForm = false;
+    renderMembers();
+  } catch (error) {
+    $("#memberCreateMessage").textContent = error.message;
+  }
+}
+
+function downloadMembersCsv(members) {
+  const header = ["이름", "아이디", "전화번호", "이메일", "생년월일", "최근 출석일"];
+  const lines = members.map((member) => [member.name, member.username || "", member.phone || "", member.email || "", member.birthdate || "", member.recent || ""]);
+  const csv = [header, ...lines].map((row) => row.map(csvCell).join(",")).join("\n");
+  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "members.csv";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value) {
+  return `"${String(value).replaceAll('"', '""')}"`;
+}
+
+function memberUsageState(member, index) {
+  return index % 4 === 0 && index !== 0 ? "expired" : "active";
+}
+
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 }
 
 function renderCenterInfo() {

@@ -762,8 +762,7 @@ h2 {
   gap: 8px;
 }
 
-.segmented button,
-.filter-row button {
+.segmented button {
   min-height: 36px;
   box-shadow: none;
   background: rgba(255, 255, 255, 0.045);
@@ -782,13 +781,6 @@ h2 {
   color: var(--muted);
 }
 
-.filter-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
 .table-wrap {
   overflow: auto;
   border: 1px solid rgba(99, 234, 255, 0.14);
@@ -797,9 +789,29 @@ h2 {
 
 .admin-table {
   width: 100%;
-  min-width: 940px;
+  min-width: 760px;
   border-collapse: collapse;
   font-size: 14px;
+}
+
+.member-create-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 10px;
+  align-items: start;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid rgba(99, 234, 255, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.member-create-form button {
+  min-height: 48px;
+}
+
+.member-create-form .form-message {
+  grid-column: 1 / -1;
 }
 
 .admin-table th,
@@ -878,7 +890,7 @@ h2 {
 .calendar-week,
 .attendance-calendar {
   display: grid;
-  grid-template-columns: repeat(7, minmax(72px, 1fr));
+  grid-template-columns: repeat(7, 1fr);
   gap: 8px;
 }
 
@@ -888,15 +900,19 @@ h2 {
   text-align: center;
 }
 
+.calendar-week span {
+  font-weight: 700;
+}
+
 .calendar-day {
-  min-height: 86px;
+  min-height: 76px;
   text-align: left;
   box-shadow: none;
-  background: rgba(255, 255, 255, 0.04);
 }
 
 .calendar-day.empty {
   visibility: hidden;
+  pointer-events: none;
 }
 
 .calendar-day strong,
@@ -906,13 +922,21 @@ h2 {
 
 .calendar-day span {
   margin-top: 16px;
-  color: #bdeffc;
+  color: var(--muted);
   font-size: 13px;
 }
 
 .calendar-day.selected {
+  border-color: rgba(46, 232, 255, 0.82);
   background: rgba(46, 232, 255, 0.18);
-  border-color: rgba(46, 232, 255, 0.72);
+}
+
+.attendance-detail {
+  align-self: center;
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 
 .attendance-detail h3 {
@@ -1020,6 +1044,7 @@ h2 {
   .attendance-layout {
     grid-template-columns: 1fr;
     display: grid;
+    height: auto;
   }
 
   .search-box {
@@ -1028,8 +1053,8 @@ h2 {
 
   .calendar-week,
   .attendance-calendar {
-    grid-template-columns: repeat(7, minmax(42px, 1fr));
-    gap: 5px;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
   }
 
   .calendar-day {

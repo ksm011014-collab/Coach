@@ -99,6 +99,8 @@ class ApiHandler(SimpleHTTPRequestHandler):
                 self.me()
             elif method == "GET" and path == "/api/members":
                 self.members()
+            elif method == "POST" and path == "/api/members":
+                self.create_member(body or {})
             elif method == "GET" and path.startswith("/api/members/"):
                 self.member_detail(path.rsplit("/", 1)[-1])
             elif method == "PATCH" and path.startswith("/api/members/"):
@@ -165,8 +167,42 @@ class ApiHandler(SimpleHTTPRequestHandler):
 
     def members(self) -> None:
         user = self.require_user()
-        profiles = [profile for profile in STORE.profiles.values() if can_read_profile(user, profile)]
-        self.respond({"members": serialize(profiles)})
+        members = []
+        for profile in STORE.profiles.values():
+            if not can_read_profile(user, profile):
+                continue
+            values = serialize(profile)
+            account = STORE.get_user(profile.user_id)
+            if account:
+                values.update({"username": account.username, "email": account.email, "role": account.role})
+            members.append(values)
+        self.respond({"members": members})
+
+    def create_member(self, body: dict[str, Any]) -> None:
+        user = self.require_user()
+        if user.role != "OWNER":
+            raise PermissionError("only owners can create members")
+        password = str(body.get("password") or "")
+        password_confirm = str(body.get("password_confirm") or password)
+        if password != password_confirm:
+            raise ValueError("password confirmation does not match")
+        member = STORE.create_user(
+            username=str(body["username"]),
+            password=password,
+            role="MEMBER",
+            name=str(body.get("name") or body["username"]).strip(),
+            gym_id=user.gym_id,
+            email=str(body.get("email") or ""),
+        )
+        profile = STORE.create_profile(
+            user=member,
+            phone=str(body.get("phone") or ""),
+            birthdate=str(body.get("birthdate") or ""),
+            gender=str(body.get("gender") or ""),
+        )
+        values = serialize(profile)
+        values.update({"username": member.username, "email": member.email, "role": member.role})
+        self.respond({"member": values}, HTTPStatus.CREATED)
 
     def member_detail(self, member_id: str) -> None:
         user = self.require_user()
