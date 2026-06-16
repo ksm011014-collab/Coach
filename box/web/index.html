@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>APEX Boxing AI Coach</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div id="app" class="shell auth-shell">
+      <aside id="sidebar" class="sidebar hidden">
+        <div class="brand-row">
+          <div class="brand">
+            <span class="brand-mark"></span>
+            <div class="brand-copy">
+              <strong>APEX</strong>
+              <small>Boxing AI Coach</small>
+            </div>
+          </div>
+          <button id="sidebarToggle" class="icon-button" title="사이드바 접기">☰</button>
+        </div>
+        <nav id="nav"></nav>
+        <div class="account">
+          <span id="userName"></span>
+          <button id="logoutButton" class="ghost">로그아웃</button>
+        </div>
+      </aside>
+
+      <main class="stage">
+        <section id="loginPanel" class="login-panel">
+          <div class="intro">
+            <div class="hero-orbit" aria-hidden="true">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+            <p class="eyebrow hero-brand">선랑 제이디씨</p>
+            <h1 class="hero-title"><span>AI 동작·음성 교차 검증 기반</span><span>에듀·스포츠 B2B SaaS</span></h1>
+            <div class="hero-status" aria-hidden="true">
+              <span>POSE SIGNAL</span>
+              <span>VOICE CHECK</span>
+              <span>COACHING AI</span>
+            </div>
+          </div>
+
+          <div class="auth-card">
+            <div class="auth-logo">
+              <span class="auth-logo-mark"></span>
+              <div>
+                <strong>APEX</strong>
+                <small>Boxing AI Coach</small>
+              </div>
+            </div>
+            <div class="auth-tabs">
+              <button class="auth-tab active" data-auth-mode="owner">관장</button>
+              <button class="auth-tab" data-auth-mode="member">회원</button>
+            </div>
+
+            <form id="loginForm" class="auth-form">
+              <input name="username" value="owner" placeholder="아이디" autocomplete="username" />
+              <input name="password" value="Owner!123" type="password" placeholder="비밀번호" autocomplete="current-password" />
+              <button id="authSubmit">로그인</button>
+              <p id="authMessage" class="form-message"></p>
+            </form>
+          </div>
+        </section>
+
+        <section id="hud" class="hud hidden">
+          <canvas id="skeletonCanvas"></canvas>
+          <div id="cameraOffline" class="camera-offline">
+            <strong>카메라 연결 안됨</strong>
+            <span>실시간 코칭을 시작하려면 카메라 권한을 허용하고 장치를 연결하세요.</span>
+            <button id="retryCamera">카메라 연결</button>
+          </div>
+          <div class="scanlines"></div>
+          <div class="corner corner-tl"></div>
+          <div class="corner corner-tr"></div>
+          <div class="corner corner-bl"></div>
+          <div class="corner corner-br"></div>
+
+          <article class="overlay target-card">
+            <span>수행 동작</span>
+            <strong id="targetAction">가드 준비</strong>
+            <small id="cameraStatus">카메라 대기</small>
+          </article>
+
+          <article class="overlay score-card">
+            <span>점수</span>
+            <strong id="scoreValue">--</strong>
+            <small id="confidenceValue">confidence --</small>
+          </article>
+
+          <article class="overlay feedback-card">
+            <span>AI 피드백</span>
+            <p id="feedbackText">실시간 세션을 시작하면 포즈 분석 이벤트가 표시됩니다.</p>
+            <div id="metrics" class="metrics"></div>
+          </article>
+
+          <article class="overlay camera-card">
+            <video id="cameraPreview" autoplay muted playsinline></video>
+            <div class="camera-fallback" id="cameraFallback">LIVE CAMERA</div>
+          </article>
+        </section>
+
+        <section id="workspace" class="workspace hidden">
+          <div class="panel">
+            <div class="panel-head">
+              <h2 id="viewTitle">대시보드</h2>
+              <button id="startSession">실시간 세션 시작</button>
+            </div>
+            <div id="viewContent" class="view-grid"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>
