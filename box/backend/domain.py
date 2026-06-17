@@ -377,6 +377,23 @@ class Store:
         row = self.conn.execute("select * from training_sessions where id = ?", (session_id,)).fetchone()
         return session_from_row(row) if row else None
 
+    def end_session(self, session_id: str, ended_at: float, overall_score: int) -> TrainingSession | None:
+        with self.lock, self.conn:
+            self.conn.execute(
+                """
+                update training_sessions
+                set ended_at = ?, overall_score = ?
+                where id = ?
+                """,
+                (ended_at, overall_score, session_id),
+            )
+        return self.get_session(session_id)
+
+    def delete_session(self, session_id: str) -> None:
+        with self.lock, self.conn:
+            self.conn.execute("delete from coach_labels where session_id = ?", (session_id,))
+            self.conn.execute("delete from training_sessions where id = ?", (session_id,))
+
     def create_label(self, label: CoachLabel) -> CoachLabel:
         with self.lock, self.conn:
             self.conn.execute(

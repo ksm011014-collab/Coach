@@ -32,6 +32,39 @@ class AuthorizationTests(unittest.TestCase):
         self.assertTrue(can_read_session(self.owner, session))
         self.assertTrue(can_read_session(self.member, session))
 
+    def test_end_session_persists_record_summary(self):
+        session = TrainingSession(
+            id="session_record",
+            user_id=self.member.id,
+            gym_id=self.member.gym_id,
+            started_at=10,
+            ended_at=None,
+            camera_config=[{"camera_id": "cam_front_01", "view_angle": "front"}],
+            overall_score=0,
+            focus="guard_and_strikes",
+        )
+        self.store.create_session(session)
+        updated = self.store.end_session(session.id, ended_at=70, overall_score=86)
+
+        self.assertEqual(updated.ended_at, 70)
+        self.assertEqual(updated.overall_score, 86)
+
+    def test_delete_session_removes_record(self):
+        session = TrainingSession(
+            id="session_delete",
+            user_id=self.member.id,
+            gym_id=self.member.gym_id,
+            started_at=10,
+            ended_at=70,
+            camera_config=[{"camera_id": "cam_front_01", "view_angle": "front"}],
+            overall_score=86,
+            focus="guard_and_strikes",
+        )
+        self.store.create_session(session)
+        self.store.delete_session(session.id)
+
+        self.assertIsNone(self.store.get_session(session.id))
+
 
 if __name__ == "__main__":
     unittest.main()

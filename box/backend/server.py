@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import base64
 import dataclasses
-import hashlib
 import json
 import os
 import socketserver
-import struct
 import threading
 import time
 from http import HTTPStatus
@@ -30,7 +27,6 @@ try:
         validate_password,
         verify_password,
     )
-    from pose_worker import MMPoseUnavailable, create_pose_worker
 except ModuleNotFoundError:
     from backend.domain import (
         CoachLabel,
@@ -46,20 +42,11 @@ except ModuleNotFoundError:
         validate_password,
         verify_password,
     )
-    from backend.pose_worker import MMPoseUnavailable, create_pose_worker
 
 
 ROOT = Path(__file__).resolve().parents[1]
 WEB_ROOT = ROOT / "web"
 STORE = Store(ROOT / "backend" / "boxing_coach.db")
-try:
-    POSE_WORKER = create_pose_worker()
-    POSE_WORKER_MODE = POSE_WORKER.__class__.__name__
-except MMPoseUnavailable as exc:
-    print(f"MMPose worker unavailable, falling back to demo worker: {exc}")
-    os.environ["POSE_WORKER"] = "demo"
-    POSE_WORKER = create_pose_worker()
-    POSE_WORKER_MODE = "DemoPoseWorker"
 
 
 class ApiHandler(SimpleHTTPRequestHandler):
@@ -76,9 +63,6 @@ class ApiHandler(SimpleHTTPRequestHandler):
         if parsed.path.startswith("/api/"):
             self.route_api("GET", parsed.path, None)
             return
-        if parsed.path.startswith("/realtime/session/"):
-            self.handle_websocket(parsed)
-            return
         return super().do_GET()
 
     def do_POST(self) -> None:
@@ -86,6 +70,9 @@ class ApiHandler(SimpleHTTPRequestHandler):
 
     def do_PATCH(self) -> None:
         self.route_api("PATCH", urlparse(self.path).path, self.read_json())
+
+    def do_DELETE(self) -> None:
+        self.route_api("DELETE", urlparse(self.path).path, None)
 
     def route_api(self, method: str, path: str, body: dict[str, Any] | None) -> None:
         try:
@@ -109,8 +96,13 @@ class ApiHandler(SimpleHTTPRequestHandler):
                 self.create_session(body or {})
             elif method == "GET" and path == "/api/sessions":
                 self.sessions()
+            elif method == "PATCH" and path.endswith("/end") and path.startswith("/api/sessions/"):
+                session_id = path.split("/")[-2]
+                self.end_session(session_id, body or {})
             elif method == "GET" and path.startswith("/api/sessions/"):
                 self.session_detail(path.rsplit("/", 1)[-1])
+            elif method == "DELETE" and path.startswith("/api/sessions/"):
+                self.delete_session(path.rsplit("/", 1)[-1])
             elif method == "POST" and path.endswith("/labels") and path.startswith("/api/sessions/"):
                 session_id = path.split("/")[-2]
                 self.create_label(session_id, body or {})
@@ -267,6 +259,27 @@ class ApiHandler(SimpleHTTPRequestHandler):
         labels = STORE.labels_for_session(session_id)
         self.respond({"session": serialize(session), "labels": serialize(labels)})
 
+    def end_session(self, session_id: str, body: dict[str, Any]) -> None:
+        user = self.require_user()
+        session = STORE.get_session(session_id)
+        if session is None:
+            raise ValueError("session not found")
+        if not can_read_session(user, session):
+            raise PermissionError("session is outside your access scope")
+        score = int(body.get("overall_score") or session.overall_score or 0)
+        updated = STORE.end_session(session_id, time.time(), max(0, min(100, score)))
+        self.respond({"session": serialize(updated)})
+
+    def delete_session(self, session_id: str) -> None:
+        user = self.require_user()
+        session = STORE.get_session(session_id)
+        if session is None:
+            raise ValueError("session not found")
+        if not can_read_session(user, session):
+            raise PermissionError("session is outside your access scope")
+        STORE.delete_session(session_id)
+        self.respond({"deleted": True, "session_id": session_id})
+
     def create_label(self, session_id: str, body: dict[str, Any]) -> None:
         user = self.require_user()
         if user.role != "OWNER":
@@ -285,51 +298,6 @@ class ApiHandler(SimpleHTTPRequestHandler):
         )
         STORE.create_label(label)
         self.respond({"label": serialize(label)}, HTTPStatus.CREATED)
-
-    def handle_websocket(self, parsed: Any) -> None:
-        token = parse_qs(parsed.query).get("token", [""])[0]
-        user = self.user_from_token(token)
-        session_id = parsed.path.rsplit("/", 1)[-1]
-        session = STORE.get_session(session_id)
-        if session is None or not can_read_session(user, session):
-            self.send_error(HTTPStatus.FORBIDDEN, "session is outside your access scope")
-            return
-
-        key = self.headers.get("Sec-WebSocket-Key")
-        if not key:
-            self.send_error(HTTPStatus.BAD_REQUEST, "missing websocket key")
-            return
-        accept = base64.b64encode(
-            hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()
-        ).decode()
-        self.send_response(HTTPStatus.SWITCHING_PROTOCOLS)
-        self.send_header("Upgrade", "websocket")
-        self.send_header("Connection", "Upgrade")
-        self.send_header("Sec-WebSocket-Accept", accept)
-        self.end_headers()
-
-        for frame_index in range(10_000):
-            try:
-                packet = POSE_WORKER.packet(session_id, frame_index)
-            except MMPoseUnavailable as exc:
-                self.write_ws_text(json.dumps({"error": str(exc), "status": "mmpose_unavailable"}, ensure_ascii=False))
-                break
-            self.write_ws_text(json.dumps(dataclasses.asdict(packet), ensure_ascii=False))
-            time.sleep(0.08)
-
-    def write_ws_text(self, text: str) -> None:
-        payload = text.encode("utf-8")
-        header = bytearray([0x81])
-        if len(payload) < 126:
-            header.append(len(payload))
-        elif len(payload) < 65536:
-            header.extend([126])
-            header.extend(struct.pack("!H", len(payload)))
-        else:
-            header.extend([127])
-            header.extend(struct.pack("!Q", len(payload)))
-        self.wfile.write(header + payload)
-        self.wfile.flush()
 
     def require_user(self) -> Any:
         auth = self.headers.get("Authorization", "")

@@ -93,12 +93,22 @@
           <article class="overlay feedback-card">
             <span>AI 피드백</span>
             <p id="feedbackText">실시간 세션을 시작하면 포즈 분석 이벤트가 표시됩니다.</p>
-            <div id="metrics" class="metrics"></div>
+            <div id="feedbackLog" class="feedback-log"></div>
           </article>
 
           <article class="overlay camera-card">
             <video id="cameraPreview" autoplay muted playsinline></video>
             <div class="camera-fallback" id="cameraFallback">LIVE CAMERA</div>
+          </article>
+
+          <article class="overlay session-card">
+            <span>운동 기록</span>
+            <strong id="sessionState">대기 중</strong>
+            <small id="sessionTimer">00:00</small>
+            <div class="session-actions">
+              <button id="startSessionHud">시작</button>
+              <button id="stopSessionHud" class="danger" disabled>종료</button>
+            </div>
           </article>
         </section>
 
@@ -112,6 +122,17 @@
           </div>
         </section>
       </main>
+
+      <div id="confirmModal" class="modal-backdrop hidden">
+        <section class="confirm-modal">
+          <strong>삭제하시겠습니까?</strong>
+          <p>선택한 운동기록과 녹화본이 삭제됩니다.</p>
+          <div class="confirm-actions">
+            <button id="confirmDeleteYes" class="danger">예</button>
+            <button id="confirmDeleteNo" class="ghost">아니요</button>
+          </div>
+        </section>
+      </div>
     </div>
     <script src="/app.js"></script>
   </body>

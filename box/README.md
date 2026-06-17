@@ -1,6 +1,6 @@
 # Boxing AI Coach MVP
 
-MMPose/RTMPose style pose events, role-based gym member management, and a Jarvis-like HUD coaching screen in one local MVP.
+MediaPipe-based real-time pose coaching, role-based gym member management, and a Jarvis-like HUD coaching screen in one local MVP.
 
 ## Run
 
@@ -28,26 +28,16 @@ member / Member!123
 - Member access only to their own profile and sessions.
 - Training sessions with camera metadata ready for future multi-camera expansion.
 - Coach labels for later model-training datasets.
-- Real-time WebSocket stream that emits pose keypoints, score, target action, feedback, camera status, and boxing-specific metrics.
+- Browser-side MediaPipe pose detection that emits keypoints, score, target action, feedback, camera status, and boxing-specific metrics.
 - Static HUD UI with sidebar, skeleton canvas, live camera panel, score, target action, and feedback overlays.
 
-## MMPose integration point
+## MediaPipe pose detection
 
-`backend/pose_worker.py` provides two workers:
+Real-time coaching uses MediaPipe Pose Landmarker directly in the browser. The backend only serves the app and stores member/session data, so the webcam stream does not pass through Python.
 
-- `DemoPoseWorker`: synthetic fallback pose stream.
-- `MMPoseCameraWorker`: real webcam -> OpenCV -> `MMPoseInferencer` -> boxing score/feedback packets.
-
-Run the real MMPose worker after installing OpenMMLab dependencies and a working webcam:
-
-```powershell
-$env:POSE_WORKER="mmpose"
-$env:MMPOSE_POSE2D="human"
-$env:MMPOSE_DEVICE="cuda:0" # or "cpu"
-python backend/server.py
-```
-
-The MMPose integration uses the official `MMPoseInferencer` style API and maps COCO human keypoints into the frontend skeleton format. If MMPose/OpenCV/camera access is unavailable, the server falls back to `DemoPoseWorker` unless `MMPoseCameraWorker` fails during an active stream.
+- The browser loads `@mediapipe/tasks-vision` from CDN.
+- The app uses the lightweight Pose Landmarker model with GPU delegation when available.
+- Camera video, skeleton drawing, feedback, score, and recording are all handled in the HUD without a pose backend.
 
 The cloud API should continue storing keypoints, scores, events, and labels rather than raw video by default.
 
