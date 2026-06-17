@@ -1,6 +1,6 @@
 # Boxing AI Coach MVP
 
-MediaPipe-based real-time pose coaching, role-based gym member management, and a Jarvis-like HUD coaching screen in one local MVP.
+MediaPipe-based real-time pose coaching, role-based center member management, and a Jarvis-like HUD coaching screen in one local MVP.
 
 ## Run
 
@@ -21,10 +21,17 @@ owner / Owner!123
 member / Member!123
 ```
 
+Default center code:
+
+```text
+apex
+```
+
 ## What is implemented
 
-- Owner/member signup and login with signed tokens.
-- Owner access to all members and sessions in their gym.
+- Administrator/member signup and login with signed tokens.
+- Administrator signup creates a new center, while member signup joins by center code.
+- Administrators can register members and access sessions only inside their center.
 - Member access only to their own profile and sessions.
 - Training sessions with camera metadata ready for future multi-camera expansion.
 - Coach labels for later model-training datasets.

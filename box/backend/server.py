@@ -3,7 +3,10 @@ from __future__ import annotations
 import dataclasses
 import json
 import os
+import shutil
 import socketserver
+import subprocess
+import tempfile
 import threading
 import time
 from http import HTTPStatus
@@ -66,7 +69,18 @@ class ApiHandler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self) -> None:
-        self.route_api("POST", urlparse(self.path).path, self.read_json())
+        path = urlparse(self.path).path
+        if path == "/api/recordings/convert":
+            try:
+                self.convert_recording()
+            except PermissionError as exc:
+                self.respond({"error": str(exc)}, HTTPStatus.FORBIDDEN)
+            except ValueError as exc:
+                self.respond({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            except Exception as exc:
+                self.respond({"error": "server error", "detail": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+            return
+        self.route_api("POST", path, self.read_json())
 
     def do_PATCH(self) -> None:
         self.route_api("PATCH", urlparse(self.path).path, self.read_json())
@@ -130,12 +144,25 @@ class ApiHandler(SimpleHTTPRequestHandler):
 
     def signup(self, body: dict[str, Any]) -> None:
         role = str(body.get("role", "MEMBER")).upper()
-        gym_id = str(body.get("gym_id") or "gym_apex")
         password = str(body["password"])
         password_confirm = str(body.get("password_confirm") or "")
         if password != password_confirm:
             raise ValueError("password confirmation does not match")
         validate_password(password)
+        if role == "OWNER":
+            center = STORE.create_gym(
+                name=str(body.get("center_name") or "").strip(),
+                code=str(body.get("center_code") or "").strip(),
+            )
+            gym_id = center.id
+        elif role == "MEMBER":
+            center_code = str(body.get("center_code") or "").strip()
+            center = STORE.find_gym_by_code(center_code)
+            if center is None:
+                raise ValueError("valid center code is required")
+            gym_id = center.id
+        else:
+            raise ValueError("role must be OWNER or MEMBER")
         user = STORE.create_user(
             username=str(body["username"]),
             password=password,
@@ -173,7 +200,7 @@ class ApiHandler(SimpleHTTPRequestHandler):
     def create_member(self, body: dict[str, Any]) -> None:
         user = self.require_user()
         if user.role != "OWNER":
-            raise PermissionError("only owners can create members")
+            raise PermissionError("only administrators can create members")
         password = str(body.get("password") or "")
         password_confirm = str(body.get("password_confirm") or password)
         if password != password_confirm:
@@ -213,7 +240,7 @@ class ApiHandler(SimpleHTTPRequestHandler):
         if user.role != "OWNER" and user.id != profile.user_id:
             raise PermissionError("cannot update this member")
         if user.gym_id != profile.gym_id:
-            raise PermissionError("member is outside your gym")
+            raise PermissionError("member is outside your center")
         allowed = {"phone", "birthdate", "gender", "height_cm", "weight_kg", "reach_cm", "stance", "injury_note", "name"}
         values = dataclasses.asdict(profile)
         for key in allowed:
@@ -229,7 +256,7 @@ class ApiHandler(SimpleHTTPRequestHandler):
             raise PermissionError("members can only create their own sessions")
         target = STORE.get_user(target_user_id)
         if target is None or target.gym_id != user.gym_id:
-            raise PermissionError("target user is outside your gym")
+            raise PermissionError("target user is outside your center")
         session = TrainingSession(
             id=f"session_{int(time.time() * 1000)}",
             user_id=target_user_id,
@@ -286,7 +313,7 @@ class ApiHandler(SimpleHTTPRequestHandler):
             raise PermissionError("only owners can label sessions")
         session = STORE.get_session(session_id)
         if session is None or session.gym_id != user.gym_id:
-            raise PermissionError("session is outside your gym")
+            raise PermissionError("session is outside your center")
         label = CoachLabel(
             id=f"label_{int(time.time() * 1000)}",
             session_id=session_id,
@@ -298,6 +325,43 @@ class ApiHandler(SimpleHTTPRequestHandler):
         )
         STORE.create_label(label)
         self.respond({"label": serialize(label)}, HTTPStatus.CREATED)
+
+    def convert_recording(self) -> None:
+        self.require_user()
+        ffmpeg = shutil.which("ffmpeg")
+        if ffmpeg is None:
+            raise ValueError("MP4 conversion requires FFmpeg installed on this computer")
+        size = int(self.headers.get("Content-Length") or 0)
+        if size == 0:
+            raise ValueError("recording is empty")
+        source = self.rfile.read(size)
+        with tempfile.TemporaryDirectory() as directory:
+            input_path = Path(directory) / "recording.webm"
+            output_path = Path(directory) / "recording.mp4"
+            input_path.write_bytes(source)
+            result = subprocess.run(
+                [
+                    ffmpeg,
+                    "-y",
+                    "-i",
+                    str(input_path),
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
+                    "-pix_fmt",
+                    "yuv420p",
+                    "-movflags",
+                    "+faststart",
+                    str(output_path),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if result.returncode != 0 or not output_path.exists():
+                raise ValueError("MP4 conversion failed")
+            self.respond_bytes(output_path.read_bytes(), "video/mp4", "recording.mp4")
 
     def require_user(self) -> Any:
         auth = self.headers.get("Authorization", "")
@@ -326,11 +390,22 @@ class ApiHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(encoded)
 
+    def respond_bytes(self, data: bytes, content_type: str, filename: str) -> None:
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.end_headers()
+        self.wfile.write(data)
+
 
 def public_user(user: Any) -> dict[str, Any]:
+    center = STORE.gyms.get(user.gym_id)
     return {
         "id": user.id,
         "gym_id": user.gym_id,
+        "center_name": center.name if center else "",
+        "center_code": center.code if center else "",
         "username": user.username,
         "email": user.email,
         "role": user.role,

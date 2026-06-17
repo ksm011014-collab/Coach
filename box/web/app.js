@@ -1,5 +1,6 @@
 const SETTINGS_KEY = "boxing_settings";
 const CENTER_KEY = "boxing_center_profile";
+const STAFF_KEY = "boxing_staff";
 
 const state = {
   token: localStorage.getItem("boxing_token"),
@@ -16,7 +17,9 @@ const state = {
   memberFilter: "all",
   memberSearch: "",
   showMemberForm: false,
+  editingMemberId: "",
   selectedMemberId: "",
+  selectedRecordIds: new Set(),
   activeSessionId: "",
   activeSessionStartedAt: 0,
   sessionTimer: null,
@@ -26,7 +29,6 @@ const state = {
   recordingCanvas: null,
   recordingFrame: null,
   localRecordings: {},
-  pendingDeleteSessionId: "",
   poseLandmarker: null,
   poseLoop: null,
   poseRunning: false,
@@ -38,6 +40,11 @@ const state = {
   settingsMessage: "",
   center: loadCenterProfile(),
   centerMessage: "",
+  staff: loadStaff(),
+  selectedStaffId: "",
+  showStaffForm: false,
+  staffMessage: "",
+  accountModalOpen: false,
 };
 
 const navItems = [
@@ -49,6 +56,44 @@ const navItems = [
   ["attendance", "출석"],
   ["settings", "설정"],
 ];
+
+const memberNavItems = [
+  ["coach", "실시간 코칭"],
+  ["memberWorkouts", "운동 현황"],
+  ["memberAttendance", "출석"],
+  ["memberProfile", "정보 변경"],
+  ["settings", "설정"],
+];
+
+const navIcons = {
+  coach: "video",
+  dashboard: "chartPie",
+  center: "home",
+  members: "user",
+  staff: "idCard",
+  attendance: "calendar",
+  memberWorkouts: "activity",
+  memberAttendance: "calendar",
+  memberProfile: "user",
+  settings: "settings",
+};
+
+const iconPaths = {
+  activity: `<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>`,
+  calendar: `<path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/>`,
+  chartPie: `<path d="M21 12c.6 0 1-.4.9-1a10 10 0 0 0-8.9-8.9c-.6-.1-1 .4-1 .9v8a1 1 0 0 0 1 1z"/><path d="M21.2 15.9A10 10 0 1 1 8 2.8"/>`,
+  home: `<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10.5 12 3l9 7.5"/><path d="M5 10v11h14V10"/>`,
+  idCard: `<path d="M16 10h2"/><path d="M16 14h2"/><path d="M6.17 15a3 3 0 0 1 5.66 0"/><circle cx="9" cy="11" r="2"/><rect x="3" y="4" width="18" height="16" rx="2"/>`,
+  power: `<path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/>`,
+  settings: `<path d="M9.7 3.4a1 1 0 0 1 1-.7h2.6a1 1 0 0 1 1 .7l.4 1.4a1 1 0 0 0 1.4.6l1.3-.6a1 1 0 0 1 1.2.2l1.8 1.8a1 1 0 0 1 .2 1.2l-.6 1.3a1 1 0 0 0 .6 1.4l1.4.4a1 1 0 0 1 .7 1v2.6a1 1 0 0 1-.7 1l-1.4.4a1 1 0 0 0-.6 1.4l.6 1.3a1 1 0 0 1-.2 1.2l-1.8 1.8a1 1 0 0 1-1.2.2l-1.3-.6a1 1 0 0 0-1.4.6l-.4 1.4a1 1 0 0 1-1 .7h-2.6a1 1 0 0 1-1-.7l-.4-1.4a1 1 0 0 0-1.4-.6l-1.3.6a1 1 0 0 1-1.2-.2l-1.8-1.8a1 1 0 0 1-.2-1.2l.6-1.3a1 1 0 0 0-.6-1.4l-1.4-.4a1 1 0 0 1-.7-1v-2.6a1 1 0 0 1 .7-1l1.4-.4a1 1 0 0 0 .6-1.4L3.4 8a1 1 0 0 1 .2-1.2L5.4 5a1 1 0 0 1 1.2-.2l1.3.6a1 1 0 0 0 1.4-.6z"/><circle cx="12" cy="12" r="3"/>`,
+  user: `<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>`,
+  video: `<path d="m16 13 5.2 3.5a.5.5 0 0 0 .8-.4V7.9a.5.5 0 0 0-.8-.4L16 11"/><rect x="2" y="6" width="14" height="12" rx="2"/>`,
+};
+
+function svgIcon(name, className = "nav-icon") {
+  const paths = iconPaths[name] || iconPaths.activity;
+  return `<svg class="${className}" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+}
 
 const authDefaults = {
   owner: {
@@ -66,10 +111,22 @@ const authDefaults = {
     ],
   },
   signup: {
-    button: "회원가입",
+    button: "가입하기",
     fields: [
+      {
+        name: "signup_role",
+        value: "OWNER",
+        placeholder: "가입 유형",
+        type: "select",
+        options: [
+          ["OWNER", "관리자: 새 센터 생성"],
+          ["MEMBER", "회원: 센터 코드로 가입"],
+        ],
+      },
+      { name: "center_name", value: "", placeholder: "센터명", type: "text", signupRole: "OWNER" },
+      { name: "center_code", value: "", placeholder: "센터 코드", type: "text", signupRole: "MEMBER" },
       { name: "username", value: "", placeholder: "아이디", type: "text", withCheck: true },
-      { name: "name", value: "", placeholder: "이름", type: "text" },
+      { name: "name", value: "", placeholder: "관리자/회원 이름", type: "text" },
       { name: "email", value: "", placeholder: "이메일", type: "email" },
       { name: "password", value: "", placeholder: "비밀번호: 특수문자 포함 8자리 이상", type: "password" },
       { name: "password_confirm", value: "", placeholder: "비밀번호 확인", type: "password" },
@@ -116,10 +173,18 @@ async function login(username, password) {
 
 async function signup(form) {
   const body = Object.fromEntries(form.entries());
-  body.role = "MEMBER";
+  body.role = body.signup_role || "MEMBER";
+  delete body.signup_role;
   body.username = normalizeUsername(body.username);
+  body.center_code = normalizeCenterCode(body.center_code);
   if (state.usernameChecked !== body.username) {
     throw new Error("아이디 중복 확인을 먼저 해주세요.");
+  }
+  if (body.role === "OWNER" && !String(body.center_name || "").trim()) {
+    throw new Error("관리자 가입은 센터명이 필요합니다.");
+  }
+  if (body.role === "MEMBER" && !body.center_code) {
+    throw new Error("회원 가입은 센터 코드가 필요합니다.");
   }
   if (body.password !== body.password_confirm) {
     throw new Error("비밀번호 확인이 일치하지 않습니다.");
@@ -142,6 +207,7 @@ async function hydrate() {
     const me = await api("/me");
     state.user = me.user;
     state.profile = me.profile;
+    syncCenterFromAccount();
     const members = await api("/members");
     const sessions = await api("/sessions");
     state.members = members.members;
@@ -167,12 +233,13 @@ function renderLoggedOut() {
 }
 
 function renderApp() {
+  normalizeActiveView();
   $("#app").className = `shell ${state.sidebarCollapsed ? "sidebar-collapsed" : ""}`;
   $("#sidebar").classList.remove("hidden");
   $("#loginPanel").classList.add("hidden");
   $("#workspace").classList.toggle("hidden", state.activeView === "coach");
   $("#hud").classList.toggle("hidden", state.activeView !== "coach");
-  $("#userName").textContent = `${state.user.name} · ${state.user.role === "OWNER" ? "관장" : "회원"}`;
+  $("#userName").textContent = `${state.user.name} · ${roleLabel(state.user.role)}`;
   $("#sidebarToggle").title = state.sidebarCollapsed ? "사이드바 열기" : "사이드바 접기";
   renderNav();
   renderView();
@@ -198,7 +265,7 @@ function renderAuthForm() {
   const links =
     state.authMode === "signup"
       ? `<div class="signup-actions"><button id="authSubmit">${config.button}</button><button type="button" class="back-button" data-auth-link="member">뒤로가기</button></div>`
-      : `<div class="auth-links"><button type="button" class="link-button" data-auth-link="signup">회원가입하기</button><span></span><button type="button" class="link-button">비밀번호 찾기</button></div>`;
+      : `<div class="auth-links"><button type="button" class="link-button" data-auth-link="signup">센터/회원 가입하기</button><span></span><button type="button" class="link-button">비밀번호 찾기</button></div>`;
   $("#loginForm").innerHTML = [
     ...config.fields.map(renderField),
     extras,
@@ -216,17 +283,49 @@ function renderAuthForm() {
   if (checkButton) {
     checkButton.addEventListener("click", checkUsername);
   }
+  setupSignupRoleFields();
 }
 
 function renderField(field) {
+  const roleAttrs = field.signupRole ? ` data-signup-role="${field.signupRole}"` : "";
   if (field.type === "select") {
-    return `<select name="${field.name}" required>${field.options
+    return `<select name="${field.name}"${roleAttrs} required>${field.options
       .map(([value, label]) => `<option value="${value}">${label}</option>`)
       .join("")}</select>`;
   }
-  const input = `<input name="${field.name}" value="${field.value}" type="${field.type}" placeholder="${field.placeholder}" autocomplete="off" required />`;
+  const input = `<input name="${field.name}" value="${field.value}" type="${field.type}" placeholder="${field.placeholder}" autocomplete="off"${roleAttrs} required />`;
   if (!field.withCheck) return input;
   return `<div class="username-row">${input}<button type="button" id="checkUsernameButton">중복 확인</button></div>`;
+}
+
+function roleLabel(role) {
+  return role === "OWNER" ? "관리자" : "회원";
+}
+
+function syncCenterFromAccount() {
+  if (!state.user?.center_name) return;
+  state.center = {
+    ...state.center,
+    name: state.user.center_name,
+    owner: state.user.role === "OWNER" ? state.user.name : state.center.owner,
+    code: state.user.center_code || state.center.code,
+  };
+  saveCenterProfile();
+}
+
+function setupSignupRoleFields() {
+  const roleSelect = document.querySelector('select[name="signup_role"]');
+  if (!roleSelect) return;
+  const syncFields = () => {
+    document.querySelectorAll("[data-signup-role]").forEach((field) => {
+      const active = field.dataset.signupRole === roleSelect.value;
+      field.classList.toggle("hidden", !active);
+      field.disabled = !active;
+      field.required = active;
+    });
+  };
+  roleSelect.addEventListener("change", syncFields);
+  syncFields();
 }
 
 async function checkUsername() {
@@ -249,9 +348,9 @@ async function checkUsername() {
 }
 
 function renderNav() {
-  const visible = navItems.filter(([key]) => state.user.role === "OWNER" || !["center", "members", "staff", "attendance"].includes(key));
+  const visible = state.user.role === "OWNER" ? navItems : memberNavItems;
   $("#nav").innerHTML = visible
-    .map(([key, label]) => `<button class="nav-item ${state.activeView === key ? "active" : ""}" data-view="${key}"><span>${label}</span></button>`)
+    .map(([key, label]) => `<button class="nav-item ${state.activeView === key ? "active" : ""}" data-view="${key}" title="${label}">${svgIcon(navIcons[key])}<span class="nav-label">${label}</span></button>`)
     .join("");
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => {
@@ -262,6 +361,13 @@ function renderNav() {
   });
 }
 
+function normalizeActiveView() {
+  const allowed = new Set((state.user?.role === "OWNER" ? navItems : memberNavItems).map(([key]) => key));
+  if (!allowed.has(state.activeView)) {
+    state.activeView = state.user?.role === "OWNER" ? "dashboard" : "memberWorkouts";
+  }
+}
+
 function renderView() {
   const titleMap = {
     dashboard: "대시보드",
@@ -269,6 +375,9 @@ function renderView() {
     members: "회원 관리",
     staff: "직원",
     attendance: "출석",
+    memberWorkouts: "운동 현황",
+    memberAttendance: "출석",
+    memberProfile: "정보 변경",
     settings: "설정",
   };
   $("#viewTitle").textContent = titleMap[state.activeView] || "대시보드";
@@ -277,14 +386,247 @@ function renderView() {
   if (state.activeView === "members") renderMembers();
   if (state.activeView === "staff") renderStaff();
   if (state.activeView === "attendance") renderAttendance();
+  if (state.activeView === "memberWorkouts") renderMemberWorkouts();
+  if (state.activeView === "memberAttendance") renderMemberAttendance();
+  if (state.activeView === "memberProfile") renderMemberProfile();
   if (state.activeView === "settings") renderSettings();
+}
+
+function memberSessions() {
+  return state.sessions
+    .filter((session) => session.user_id === state.user?.id)
+    .sort((a, b) => b.started_at - a.started_at);
+}
+
+function renderMemberWorkouts() {
+  const sessions = memberSessions();
+  const finished = sessions.filter((session) => session.ended_at);
+  const scored = finished.filter((session) => Number(session.overall_score) > 0);
+  const averageScore = scored.length
+    ? Math.round(scored.reduce((total, session) => total + Number(session.overall_score || 0), 0) / scored.length)
+    : 0;
+  const bestScore = scored.length ? Math.max(...scored.map((session) => Number(session.overall_score || 0))) : 0;
+  const totalMinutes = Math.round(finished.reduce((total, session) => total + Math.max(0, (session.ended_at || session.started_at) - session.started_at), 0) / 60);
+  const latest = sessions[0];
+  const rows = sessions.slice(0, 8).map((session) => `
+    <tr>
+      <td>${formatDateTime(session.started_at)}</td>
+      <td>${session.ended_at ? formatDuration(session.started_at, session.ended_at) : "진행 중"}</td>
+      <td>${session.focus || "guard_and_strikes"}</td>
+      <td><strong>${session.overall_score || 0}</strong></td>
+      <td>${state.localRecordings[session.id] ? `<button class="ghost small-button" data-recording-id="${session.id}">녹화 보기</button>` : "-"}</td>
+    </tr>`).join("");
+  $("#viewContent").innerHTML = `
+    <section class="member-page">
+      <div class="dashboard-kpis">
+        ${dashboardMetric("총 운동", `${sessions.length}회`, "내 세션 기록")}
+        ${dashboardMetric("평균 점수", `${averageScore}점`, "완료 세션 기준")}
+        ${dashboardMetric("최고 점수", `${bestScore}점`, "개인 최고 기록")}
+        ${dashboardMetric("누적 시간", `${totalMinutes}분`, "완료 세션 합계")}
+      </div>
+      <section class="member-summary-grid">
+        <article class="admin-board member-highlight">
+          <div class="dashboard-section-head">
+            <div>
+              <small>Latest</small>
+              <h3>최근 운동</h3>
+            </div>
+            <button id="memberStartSession">실시간 코칭 시작</button>
+          </div>
+          ${latest ? `
+            <div class="latest-workout">
+              <strong>${latest.overall_score || 0}점</strong>
+              <span>${formatDateTime(latest.started_at)}</span>
+              <p>${latest.ended_at ? formatDuration(latest.started_at, latest.ended_at) : "진행 중"} · ${latest.focus || "기본 코칭"}</p>
+            </div>` : `<p class="empty-note">아직 운동 기록이 없습니다.</p>`}
+        </article>
+        <article class="admin-board">
+          <div class="dashboard-section-head">
+            <div>
+              <small>Goal</small>
+              <h3>이번 주 목표</h3>
+            </div>
+          </div>
+          <div class="member-goals">
+            ${attentionItem("운동 횟수", `${Math.min(sessionsThisWeek(sessions), 3)}/3`, "주 3회 목표")}
+            ${attentionItem("가드 복귀", averageScore >= 75 ? "양호" : "집중", "점수 75점 이상 유지")}
+          </div>
+        </article>
+      </section>
+      <article class="admin-board">
+        <div class="dashboard-section-head">
+          <div>
+            <small>History</small>
+            <h3>운동 기록</h3>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="admin-table member-workout-table">
+            <thead><tr><th>날짜</th><th>시간</th><th>목표</th><th>점수</th><th>녹화</th></tr></thead>
+            <tbody>${rows || `<tr><td colspan="5">운동 기록이 없습니다.</td></tr>`}</tbody>
+          </table>
+        </div>
+      </article>
+    </section>`;
+  $("#memberStartSession").addEventListener("click", async () => {
+    state.activeView = "coach";
+    renderApp();
+    await startSession();
+  });
+  document.querySelectorAll("[data-recording-id]").forEach((button) => {
+    button.addEventListener("click", () => playRecording(button.dataset.recordingId));
+  });
+}
+
+function sessionsThisWeek(sessions) {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - start.getDay());
+  const startSeconds = start.getTime() / 1000;
+  return sessions.filter((session) => session.started_at >= startSeconds).length;
+}
+
+function renderMemberAttendance(selectedDay = new Date().getDate()) {
+  const sessions = memberSessions();
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = today.getMonth();
+  const first = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0).getDate();
+  const startPad = first.getDay();
+  const byDay = {};
+  sessions.forEach((session) => {
+    const date = new Date(session.started_at * 1000);
+    if (date.getFullYear() === year && date.getMonth() === month) {
+      const day = date.getDate();
+      byDay[day] = byDay[day] || [];
+      byDay[day].push(session);
+    }
+  });
+  const cells = [];
+  for (let i = 0; i < startPad; i++) cells.push(`<button class="calendar-day empty"></button>`);
+  for (let day = 1; day <= lastDay; day++) {
+    const count = (byDay[day] || []).length;
+    const weekendClass = dayOfWeekClass(year, month, day);
+    cells.push(`<button class="calendar-day member-attendance-day ${weekendClass} ${day === selectedDay ? "selected" : ""} ${count ? "has-session" : ""}" data-day="${day}">
+      <strong>${day}</strong><span>${count ? `${count}회 운동` : "기록 없음"}</span>
+    </button>`);
+  }
+  const selected = byDay[selectedDay] || [];
+  $("#viewContent").innerHTML = `
+    <section class="attendance-layout member-attendance-layout">
+      <div class="admin-board">
+        <div class="calendar-head">
+          <strong>${year}.${String(month + 1).padStart(2, "0")}</strong>
+          <span>내 출석 캘린더</span>
+        </div>
+        <div class="calendar-week"><span>일</span><span>월</span><span>화</span><span>수</span><span>목</span><span>금</span><span>토</span></div>
+        <div class="attendance-calendar">${cells.join("")}</div>
+      </div>
+      <aside class="admin-board attendance-detail">
+        <small>${month + 1}월 ${selectedDay}일</small>
+        <h3>${selected.length}회 운동</h3>
+        <div>${selected.map((session) => `<p><span class="badge">${session.overall_score || 0}점</span>${formatDuration(session.started_at, session.ended_at || session.started_at)}</p>`).join("") || "<p>운동 기록 없음</p>"}</div>
+      </aside>
+    </section>`;
+  document.querySelectorAll(".calendar-day[data-day]").forEach((button) => {
+    button.addEventListener("click", () => renderMemberAttendance(Number(button.dataset.day)));
+  });
+}
+
+function renderMemberProfile() {
+  const profile = state.profile || {};
+  $("#viewContent").innerHTML = `
+    <section class="member-profile-layout">
+      <article class="admin-board member-profile-card">
+        <div class="staff-profile">
+          <span class="avatar large-avatar">${(profile.name || state.user.name || "회").slice(0, 1)}</span>
+          <div>
+            <small>Member Profile</small>
+            <h3>${escapeHtml(profile.name || state.user.name || "")}</h3>
+            <p>${state.user.username} · ${state.user.email || "이메일 없음"}</p>
+          </div>
+        </div>
+      </article>
+      <article class="admin-board">
+        <div class="dashboard-section-head">
+          <div>
+            <small>Edit</small>
+            <h3>정보 변경</h3>
+          </div>
+        </div>
+        <form id="memberProfileForm" class="member-profile-form">
+          ${memberProfileInput("name", "이름", profile.name || state.user.name || "")}
+          ${memberProfileInput("phone", "전화번호", profile.phone || "")}
+          ${memberProfileInput("birthdate", "생년월일", profile.birthdate || "", "date")}
+          <label class="center-field"><span>성별</span><select name="gender">
+            ${profileOption("", "선택 안함", profile.gender)}
+            ${profileOption("male", "남성", profile.gender)}
+            ${profileOption("female", "여성", profile.gender)}
+            ${profileOption("other", "기타", profile.gender)}
+          </select></label>
+          ${memberProfileInput("height_cm", "키(cm)", profile.height_cm || "", "number")}
+          ${memberProfileInput("weight_kg", "몸무게(kg)", profile.weight_kg || "", "number")}
+          ${memberProfileInput("reach_cm", "리치(cm)", profile.reach_cm || "", "number")}
+          <label class="center-field"><span>스탠스</span><select name="stance">
+            ${profileOption("", "선택 안함", profile.stance)}
+            ${profileOption("orthodox", "오소독스", profile.stance)}
+            ${profileOption("southpaw", "사우스포", profile.stance)}
+          </select></label>
+          <label class="center-field full"><span>부상/주의 사항</span><textarea name="injury_note">${escapeHtml(profile.injury_note || "")}</textarea></label>
+          <div class="member-profile-actions">
+            <button>정보 저장</button>
+            <button type="button" class="ghost" id="refreshMemberProfile">새로고침</button>
+          </div>
+          <p id="memberProfileMessage" class="form-message"></p>
+        </form>
+      </article>
+    </section>`;
+  $("#memberProfileForm").addEventListener("submit", saveMemberProfile);
+  $("#refreshMemberProfile").addEventListener("click", refreshMemberProfile);
+}
+
+function memberProfileInput(name, label, value, type = "text") {
+  return `<label class="center-field"><span>${label}</span><input name="${name}" type="${type}" value="${escapeHtml(value)}" /></label>`;
+}
+
+function profileOption(value, label, selected) {
+  return `<option value="${value}" ${String(selected || "") === value ? "selected" : ""}>${label}</option>`;
+}
+
+async function saveMemberProfile(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const body = Object.fromEntries(form.entries());
+  ["height_cm", "weight_kg", "reach_cm"].forEach((key) => {
+    body[key] = body[key] ? Number(body[key]) : 0;
+  });
+  try {
+    const result = await api(`/members/${state.profile.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    state.profile = result.member;
+    state.user.name = result.member.name || state.user.name;
+    $("#memberProfileMessage").textContent = "정보를 저장했습니다.";
+    $("#userName").textContent = `${state.user.name} · 회원`;
+  } catch (error) {
+    $("#memberProfileMessage").textContent = error.message;
+  }
+}
+
+async function refreshMemberProfile() {
+  const me = await api("/me");
+  state.user = me.user;
+  state.profile = me.profile;
+  renderMemberProfile();
 }
 
 function renderDashboard() {
   const summary = dashboardSummary();
   const memberStatus = dashboardMemberStatus();
   const totalMembers = Math.max(memberStatus.total, 1);
-  const activeDeg = (memberStatus.active / totalMembers) * 360;
+  const activeDeg = (memberStatus.attended / totalMembers) * 360;
   const idleDeg = activeDeg + (memberStatus.idle / totalMembers) * 360;
   const recentRows = recentDashboardSessions().map(({ session, member }) => `
     <tr>
@@ -298,7 +640,7 @@ function renderDashboard() {
       <div class="dashboard-kpis">
         ${dashboardMetric("오늘 세션", `${summary.todaySessions}건`, "오늘 시작된 운동")}
         ${dashboardMetric("평균 점수", `${summary.averageScore}점`, "종료된 세션 기준")}
-        ${dashboardMetric("활성 회원", `${memberStatus.active}명`, "운동 기록 보유")}
+        ${dashboardMetric("출석 회원", `${memberStatus.attended}명`, "운동 기록 보유")}
         ${dashboardMetric("녹화 저장", `${summary.recordings}개`, "로컬 브라우저 저장")}
       </div>
 
@@ -316,7 +658,7 @@ function renderDashboard() {
               <div><strong>${memberStatus.total}</strong><span>회원</span></div>
             </div>
             <div class="status-legend">
-              ${statusLegend("active", "활성", memberStatus.active)}
+              ${statusLegend("active", "출석", memberStatus.attended)}
               ${statusLegend("idle", "미운동", memberStatus.idle)}
               ${statusLegend("expired", "만료", memberStatus.expired)}
             </div>
@@ -326,19 +668,17 @@ function renderDashboard() {
         <article class="admin-board attention-card">
           <div class="dashboard-section-head">
             <div>
-              <small>Focus</small>
-              <h3>주의 필요</h3>
+              <small>Ranking</small>
+              <h3>체육관 회원 점수 랭킹</h3>
             </div>
           </div>
-          <div class="attention-list">
-            ${attentionItem("낮은 점수 세션", `${summary.lowScoreSessions}건`, "70점 미만 세션")}
-            ${attentionItem("미완료 세션", `${summary.openSessions}건`, "종료 버튼 확인 필요")}
-            ${attentionItem("운동 없는 회원", `${memberStatus.idle}명`, "첫 세션 유도")}
+          <div class="ranking-list">
+            ${memberScoreRanking().map((item, index) => rankingItem(index + 1, item.member.name, `${item.score}점`)).join("") || `<p class="empty-note">아직 점수 기록이 없습니다.</p>`}
           </div>
         </article>
       </section>
 
-      <section class="dashboard-bottom">
+      <section class="dashboard-bottom compact-bottom">
         <article class="admin-board">
           <div class="dashboard-section-head">
             <div>
@@ -354,40 +694,10 @@ function renderDashboard() {
             </table>
           </div>
         </article>
-
-        <article class="admin-board quick-actions-card">
-          <div class="dashboard-section-head">
-            <div>
-              <small>Actions</small>
-              <h3>빠른 실행</h3>
-            </div>
-          </div>
-          <div class="quick-actions">
-            <button id="dashboardStart">실시간 코칭 시작</button>
-            <button class="ghost" id="dashboardAddMember">회원 등록</button>
-            <button class="ghost" id="dashboardExport">회원 CSV</button>
-            <button class="ghost" id="dashboardSettings">설정 열기</button>
-          </div>
-        </article>
       </section>
     </section>`;
-  $("#dashboardStart").addEventListener("click", async () => {
-    state.activeView = "coach";
-    renderApp();
-    await startSession();
-  });
-  $("#dashboardAddMember").addEventListener("click", () => {
-    state.activeView = "members";
-    state.showMemberForm = true;
-    renderApp();
-  });
   $("#dashboardMembers").addEventListener("click", () => {
     state.activeView = "members";
-    renderApp();
-  });
-  $("#dashboardExport").addEventListener("click", () => downloadMembersCsv(state.members));
-  $("#dashboardSettings").addEventListener("click", () => {
-    state.activeView = "settings";
     renderApp();
   });
 }
@@ -415,14 +725,14 @@ function dashboardMemberStatus() {
   const expired = state.members.filter((member, index) => memberUsageState(member, index) === "expired").length;
   const withSessions = new Set(state.sessions.map((session) => session.user_id));
   const idle = state.members.filter((member, index) => memberUsageState(member, index) !== "expired" && !withSessions.has(member.user_id)).length;
-  const active = Math.max(0, total - expired - idle);
-  return { total, active, idle, expired };
+  const attended = Math.max(0, total - expired - idle);
+  return { total, active: attended, attended, idle, expired };
 }
 
 function recentDashboardSessions() {
   return [...state.sessions]
     .sort((a, b) => b.started_at - a.started_at)
-    .slice(0, 6)
+    .slice(0, 4)
     .map((session) => ({
       session,
       member: state.members.find((member) => member.user_id === session.user_id),
@@ -439,6 +749,24 @@ function statusLegend(kind, label, value) {
 
 function attentionItem(label, value, note) {
   return `<div class="attention-item"><strong>${value}</strong><span>${label}</span><small>${note}</small></div>`;
+}
+
+function rankingItem(rank, name, value) {
+  return `<div class="ranking-item"><strong>${rank}</strong><span>${escapeHtml(name)}</span><small>${value}</small></div>`;
+}
+
+function memberScoreRanking(limit = 5) {
+  return state.members
+    .map((member) => {
+      const scores = sessionsForMember(member.user_id)
+        .map((session) => Number(session.overall_score || 0))
+        .filter((score) => score > 0);
+      const score = scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0;
+      return { member, score };
+    })
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
 }
 
 function renderMembers() {
@@ -459,19 +787,28 @@ function renderMembers() {
   const rows = filtered.map((member) => {
     const memberSessions = sessionsForMember(member.user_id);
     const latestSession = memberSessions[0];
+    const registerDate = memberRegisteredDate(member, member.index);
+    const expireDate = memberExpireDate(registerDate);
     return `<tr>
       <td><span class="avatar">${member.name.slice(0, 1)}</span>${member.name}</td>
-      <td>${member.username || "-"}</td>
+      <td>${memberAge(member.birthdate) || "-"}</td>
       <td>${member.phone || "-"}</td>
-      <td>${member.email || "-"}</td>
-      <td>${member.birthdate || "-"}</td>
+      <td>${registerDate}</td>
+      <td>${expireDate}</td>
       <td>${latestSession ? formatDateTime(latestSession.started_at) : "-"}</td>
-      <td><button class="ghost small-button" data-member-records="${member.id}">운동기록 ${memberSessions.length}</button></td>
+      <td>
+        <div class="record-actions">
+          <button class="ghost small-button" data-member-edit="${member.id}">수정</button>
+          <button class="ghost small-button" data-member-records="${member.id}">운동기록 ${memberSessions.length}</button>
+        </div>
+      </td>
     </tr>`;
   }).join("");
   const form = state.showMemberForm ? memberCreateForm() : "";
   const selectedMember = filtered.find((member) => member.id === state.selectedMemberId) || filtered[0];
   if (!state.selectedMemberId && selectedMember) state.selectedMemberId = selectedMember.id;
+  const editMember = state.members.find((member) => member.id === state.editingMemberId);
+  const editPanel = editMember ? memberEditPanel(editMember) : "";
   const recordPanel = selectedMember ? memberRecordPanel(selectedMember) : "";
   $("#viewContent").innerHTML = `
     <section class="admin-board">
@@ -481,14 +818,15 @@ function renderMembers() {
           <button class="${state.memberFilter === "active" ? "active" : ""}" data-member-filter="active">이용중 ${activeCount}</button>
           <button class="${state.memberFilter === "expired" ? "active" : ""}" data-member-filter="expired">만료 ${expiredCount}</button>
         </div>
-        <label class="search-box"><span>검색</span><input id="memberSearch" value="${escapeHtml(state.memberSearch)}" placeholder="이름, 아이디, 연락처 검색" /></label>
+        <label class="search-box"><span>검색</span><input id="memberSearch" value="${escapeHtml(state.memberSearch)}" placeholder="이름, 연락처 검색" /></label>
       </div>
       ${form}
+      ${editPanel}
       <div class="table-wrap">
         <table class="admin-table">
           <thead>
             <tr>
-              <th>이름</th><th>아이디</th><th>전화번호</th><th>이메일</th><th>생년월일</th><th>최근 운동</th><th>기록</th>
+              <th>이름</th><th>나이</th><th>전화번호</th><th>등록일</th><th>만료일</th><th>최근 운동</th><th>관리</th>
             </tr>
           </thead>
           <tbody>${rows || `<tr><td colspan="7">조건에 맞는 회원이 없습니다.</td></tr>`}</tbody>
@@ -496,7 +834,6 @@ function renderMembers() {
       </div>
       ${recordPanel}
       <div class="admin-actions">
-        <button class="ghost" id="downloadMembers">엑셀 다운로드</button>
         <button id="toggleMemberForm">${state.showMemberForm ? "등록 취소" : "회원 등록"}</button>
       </div>
     </section>`;
@@ -510,10 +847,17 @@ function renderMembers() {
     state.memberSearch = event.target.value;
     renderMembers();
   });
-  $("#downloadMembers").addEventListener("click", () => downloadMembersCsv(filtered));
   document.querySelectorAll("[data-member-records]").forEach((button) => {
     button.addEventListener("click", () => {
       state.selectedMemberId = button.dataset.memberRecords;
+      state.editingMemberId = "";
+      state.selectedRecordIds.clear();
+      renderMembers();
+    });
+  });
+  document.querySelectorAll("[data-member-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.editingMemberId = button.dataset.memberEdit;
       renderMembers();
     });
   });
@@ -524,44 +868,122 @@ function renderMembers() {
   document.querySelectorAll("[data-recording-id]").forEach((button) => {
     button.addEventListener("click", () => playRecording(button.dataset.recordingId));
   });
-  document.querySelectorAll("[data-delete-session-id]").forEach((button) => {
-    button.addEventListener("click", () => confirmDeleteSession(button.dataset.deleteSessionId));
+  document.querySelectorAll("[data-download-recording-id]").forEach((button) => {
+    button.addEventListener("click", () => downloadRecording(button.dataset.downloadRecordingId));
   });
+  document.querySelectorAll("[data-record-check]").forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked) {
+        state.selectedRecordIds.add(checkbox.dataset.recordCheck);
+      } else {
+        state.selectedRecordIds.delete(checkbox.dataset.recordCheck);
+      }
+      renderMembers();
+    });
+  });
+  const selectAllRecords = $("#selectAllRecords");
+  if (selectAllRecords) {
+    selectAllRecords.addEventListener("click", () => {
+      sessionsForMember(selectedMember.user_id).forEach((session) => state.selectedRecordIds.add(session.id));
+      renderMembers();
+    });
+  }
+  const clearRecordSelection = $("#clearRecordSelection");
+  if (clearRecordSelection) {
+    clearRecordSelection.addEventListener("click", () => {
+      state.selectedRecordIds.clear();
+      renderMembers();
+    });
+  }
+  const deleteSelectedRecords = $("#deleteSelectedRecords");
+  if (deleteSelectedRecords) {
+    deleteSelectedRecords.addEventListener("click", deleteSelectedMemberRecords);
+  }
   const formEl = $("#memberCreateForm");
   if (formEl) {
     formEl.addEventListener("submit", createMemberFromForm);
+  }
+  const editForm = $("#memberEditForm");
+  if (editForm) {
+    editForm.addEventListener("submit", updateMemberFromForm);
+    $("#cancelMemberEdit").addEventListener("click", () => {
+      state.editingMemberId = "";
+      renderMembers();
+    });
   }
 }
 
 function memberRecordPanel(member) {
   const sessions = sessionsForMember(member.user_id);
+  const selectedCount = sessions.filter((session) => state.selectedRecordIds.has(session.id)).length;
   const rows = sessions.map((session) => {
     const recording = state.localRecordings[session.id];
     const status = session.ended_at ? "완료" : "진행 중";
     const recordingButton = recording
-      ? `<button class="ghost small-button" data-recording-id="${session.id}">녹화 보기</button>`
+      ? `<button class="ghost small-button" data-recording-id="${session.id}">녹화 보기</button><button class="ghost small-button" data-download-recording-id="${session.id}">다운로드</button>`
       : "-";
-    const deleteButton = `<button class="ghost small-button delete-button" data-delete-session-id="${session.id}">삭제</button>`;
     return `<tr>
+      <td><input type="checkbox" data-record-check="${session.id}" ${state.selectedRecordIds.has(session.id) ? "checked" : ""} /></td>
       <td>${formatDateTime(session.started_at)}</td>
       <td>${session.ended_at ? formatDuration(session.started_at, session.ended_at) : "측정 중"}</td>
       <td>${session.overall_score || 0}</td>
       <td>${status}</td>
-      <td><div class="record-actions">${recordingButton}${deleteButton}</div></td>
+      <td><div class="record-actions">${recordingButton}</div></td>
     </tr>`;
   }).join("");
   return `<section class="record-panel">
-    <div>
-      <small>운동기록</small>
-      <h3>${member.name}</h3>
+    <div class="record-panel-head">
+      <div>
+        <small>운동기록</small>
+        <h3>${member.name}</h3>
+      </div>
+      <div class="record-bulk-actions">
+        <span>${selectedCount}개 선택</span>
+        <button class="ghost small-button" id="selectAllRecords">전체 선택</button>
+        <button class="ghost small-button" id="clearRecordSelection">전체 해제</button>
+        <button class="delete-button small-button" id="deleteSelectedRecords" ${selectedCount ? "" : "disabled"}>선택 삭제</button>
+      </div>
     </div>
     <div class="table-wrap">
       <table class="admin-table record-table">
-        <thead><tr><th>시작 시간</th><th>운동 시간</th><th>점수</th><th>상태</th><th>관리</th></tr></thead>
-        <tbody>${rows || `<tr><td colspan="5">저장된 운동기록이 없습니다.</td></tr>`}</tbody>
+        <thead><tr><th>선택</th><th>시작 시간</th><th>운동 시간</th><th>점수</th><th>상태</th><th>녹화</th></tr></thead>
+        <tbody>${rows || `<tr><td colspan="6">저장된 운동기록이 없습니다.</td></tr>`}</tbody>
       </table>
     </div>
   </section>`;
+}
+
+function memberEditPanel(member) {
+  return `<form id="memberEditForm" class="member-create-form edit-member-form">
+    <strong>회원 정보 수정</strong>
+    <input name="name" value="${escapeHtml(member.name || "")}" placeholder="이름" required />
+    <input name="phone" value="${escapeHtml(member.phone || "")}" placeholder="전화번호" />
+    <select name="gender">
+      ${profileOption("", "성별 선택", member.gender)}
+      ${profileOption("male", "남성", member.gender)}
+      ${profileOption("female", "여성", member.gender)}
+      ${profileOption("other", "기타", member.gender)}
+    </select>
+    <select name="height_cm">
+      ${numberOptions(140, 210, Number(member.height_cm || 170), "cm")}
+    </select>
+    <select name="weight_kg">
+      ${numberOptions(40, 140, Number(member.weight_kg || 70), "kg")}
+    </select>
+    <select name="reach_cm">
+      ${numberOptions(140, 220, Number(member.reach_cm || 172), "cm")}
+    </select>
+    <select name="stance">
+      ${profileOption("orthodox", "오소독스", member.stance)}
+      ${profileOption("southpaw", "사우스포", member.stance)}
+    </select>
+    <input name="injury_note" value="${escapeHtml(member.injury_note || "")}" placeholder="주의 사항" />
+    <div class="record-actions">
+      <button>수정 완료</button>
+      <button type="button" class="ghost" id="cancelMemberEdit">취소</button>
+    </div>
+    <p id="memberEditMessage" class="form-message"></p>
+  </form>`;
 }
 
 function sessionsForMember(userId) {
@@ -578,7 +1000,9 @@ function memberCreateForm() {
     <input name="password" type="password" placeholder="비밀번호: 특수문자 포함 8자리 이상" required />
     <input name="password_confirm" type="password" placeholder="비밀번호 확인" required />
     <input name="phone" placeholder="전화번호" />
-    <input name="birthdate" type="date" />
+    <select name="birthdate">
+      ${birthYearOptions()}
+    </select>
     <select name="gender">
       <option value="">성별 선택</option>
       <option value="male">남성</option>
@@ -609,29 +1033,74 @@ async function createMemberFromForm(event) {
   }
 }
 
-function downloadMembersCsv(members) {
-  const header = ["이름", "아이디", "전화번호", "이메일", "생년월일", "최근 출석일"];
-  const lines = members.map((member) => [member.name, member.username || "", member.phone || "", member.email || "", member.birthdate || "", member.recent || ""]);
-  const csv = [header, ...lines].map((row) => row.map(csvCell).join(",")).join("\n");
-  const blob = new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "members.csv";
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-function csvCell(value) {
-  return `"${String(value).replaceAll('"', '""')}"`;
-}
-
 function memberUsageState(member, index) {
   return index % 4 === 0 && index !== 0 ? "expired" : "active";
 }
 
+function memberRegisteredDate(member, index = 0) {
+  const firstSession = sessionsForMember(member.user_id).at(-1);
+  if (firstSession?.started_at) return new Date(firstSession.started_at * 1000).toISOString().slice(0, 10);
+  return dateOffset(index * 7 + 14);
+}
+
+function memberExpireDate(registeredDate) {
+  const date = new Date(`${registeredDate}T00:00:00`);
+  date.setMonth(date.getMonth() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function memberAge(birthdate) {
+  if (!birthdate) return "";
+  const birth = new Date(`${birthdate}T00:00:00`);
+  if (Number.isNaN(birth.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - birth.getFullYear();
+  const beforeBirthday = today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate());
+  if (beforeBirthday) age -= 1;
+  return age > 0 ? `${age}세` : "";
+}
+
+function birthYearOptions(selected = "") {
+  const currentYear = new Date().getFullYear();
+  const options = [`<option value="">출생연도 선택</option>`];
+  for (let year = currentYear - 80; year <= currentYear - 5; year++) {
+    const value = `${year}-01-01`;
+    options.push(profileOption(value, `${year}년생`, selected));
+  }
+  return options.join("");
+}
+
+function numberOptions(start, end, selected, suffix = "") {
+  const options = [];
+  for (let value = start; value <= end; value++) {
+    options.push(`<option value="${value}" ${Number(selected) === value ? "selected" : ""}>${value}${suffix}</option>`);
+  }
+  return options.join("");
+}
+
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
+}
+
+async function updateMemberFromForm(event) {
+  event.preventDefault();
+  const member = state.members.find((item) => item.id === state.editingMemberId);
+  if (!member) return;
+  const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+  ["height_cm", "weight_kg", "reach_cm"].forEach((key) => {
+    body[key] = Number(body[key] || 0);
+  });
+  try {
+    const result = await api(`/members/${member.id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    state.members = state.members.map((item) => item.id === member.id ? { ...item, ...result.member } : item);
+    state.editingMemberId = "";
+    renderMembers();
+  } catch (error) {
+    $("#memberEditMessage").textContent = error.message;
+  }
 }
 
 function defaultSettings() {
@@ -662,7 +1131,6 @@ function applyTheme() {
 }
 
 function renderSettings() {
-  const recordingCount = Object.keys(state.localRecordings || {}).length;
   const notificationState =
     "Notification" in window ? Notification.permission : "unsupported";
   $("#viewContent").innerHTML = `
@@ -675,20 +1143,6 @@ function renderSettings() {
         <div class="segmented setting-segment">
           ${settingButton("dark", "다크테마", state.settings.theme === "dark", "theme")}
           ${settingButton("light", "라이트테마", state.settings.theme === "light", "theme")}
-        </div>
-      </article>
-
-      <article class="admin-board settings-panel">
-        <div class="settings-heading">
-          <small>Data</small>
-          <h3>데이터 관리</h3>
-          <p>회원, 세션, 로컬 녹화 데이터를 내보내거나 정리합니다.</p>
-        </div>
-        <div class="settings-actions">
-          <button id="exportMembers">회원 CSV 내보내기</button>
-          <button id="exportSessions">세션 CSV 내보내기</button>
-          <button id="exportBackup">전체 백업 JSON 저장</button>
-          <button id="clearRecordings" class="delete-button">로컬 녹화 ${recordingCount}개 삭제</button>
         </div>
       </article>
 
@@ -721,16 +1175,12 @@ function renderSettings() {
         <div class="settings-heading">
           <small>Account</small>
           <h3>계정 설정</h3>
-          <p>${state.user.username} · ${state.user.role}</p>
+          <p>${state.user.username} · ${roleLabel(state.user.role)} · ${escapeHtml(state.user.center_name || state.center.name)}</p>
         </div>
-        <label class="settings-field">
-          <span>표시 이름</span>
-          <input id="accountName" value="${escapeHtml(state.profile?.name || state.user.name || "")}" />
-        </label>
-        <div class="settings-actions">
-          <button id="saveAccountName">이름 저장</button>
-          <button id="refreshAccount">계정 새로고침</button>
-          <button id="settingsLogout" class="delete-button">로그아웃</button>
+        <div class="account-summary">
+          <span>현재 관리자</span>
+          <strong>${escapeHtml(state.profile?.name || state.user.name || "")}</strong>
+          <button id="editAccountInfo" class="ghost small-button">정보 수정</button>
         </div>
       </article>
 
@@ -758,18 +1208,13 @@ function renderSettings() {
       renderSettings();
     });
   });
-  $("#exportMembers").addEventListener("click", () => downloadMembersCsv(state.members));
-  $("#exportSessions").addEventListener("click", downloadSessionsCsv);
-  $("#exportBackup").addEventListener("click", downloadBackupJson);
-  $("#clearRecordings").addEventListener("click", clearRecordingsFromSettings);
   $("#requestNotifications").addEventListener("click", requestNotifications);
   $("#testVoice").addEventListener("click", () => speakText("음성 피드백이 켜져 있습니다.", true));
   $("#testSound").addEventListener("click", () => playTone(720));
-  $("#saveAccountName").addEventListener("click", saveAccountName);
-  $("#refreshAccount").addEventListener("click", refreshAccount);
-  $("#settingsLogout").addEventListener("click", logout);
+  $("#editAccountInfo").addEventListener("click", openAccountModal);
   $("#saveAllSettings").addEventListener("click", saveAllSettings);
   $("#resetSettings").addEventListener("click", resetSettings);
+  if (state.accountModalOpen) renderAccountModal();
 }
 
 function settingButton(value, label, active, name) {
@@ -791,67 +1236,6 @@ function resetSettings() {
   saveSettings();
   setSettingsMessage("설정을 기본값으로 초기화했습니다.");
   renderApp();
-}
-
-function downloadSessionsCsv() {
-  const rows = state.sessions.map((session) => [
-    session.id,
-    session.user_id,
-    session.focus || "",
-    formatDateTime(session.started_at),
-    session.ended_at ? formatDateTime(session.ended_at) : "",
-    session.ended_at ? formatDuration(session.started_at, session.ended_at) : "",
-    session.overall_score || 0,
-  ]);
-  downloadTextFile("sessions.csv", "\ufeff" + [
-    ["세션ID", "회원ID", "목표", "시작", "종료", "운동시간", "점수"],
-    ...rows,
-  ].map((row) => row.map(csvCell).join(",")).join("\n"), "text/csv;charset=utf-8");
-  setSettingsMessage("세션 CSV를 저장했습니다.");
-  renderSettings();
-}
-
-function downloadBackupJson() {
-  const payload = {
-    exported_at: new Date().toISOString(),
-    user: state.user,
-    profile: state.profile,
-    members: state.members,
-    sessions: state.sessions,
-    settings: state.settings,
-    local_recordings: Object.values(state.localRecordings || {}).map(({ id, mimeType, size, savedAt }) => ({ id, mimeType, size, savedAt })),
-  };
-  downloadTextFile("boxing-coach-backup.json", JSON.stringify(payload, null, 2), "application/json;charset=utf-8");
-  setSettingsMessage("백업 JSON을 저장했습니다.");
-  renderSettings();
-}
-
-function downloadTextFile(filename, content, type) {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  link.click();
-  URL.revokeObjectURL(url);
-}
-
-async function clearRecordingsFromSettings() {
-  await clearAllRecordings();
-  state.localRecordings = {};
-  setSettingsMessage("로컬 녹화를 삭제했습니다.");
-  renderSettings();
-}
-
-async function clearAllRecordings() {
-  if (!window.indexedDB) return;
-  const db = await openRecordingDb();
-  await new Promise((resolve, reject) => {
-    const request = db.transaction("recordings", "readwrite").objectStore("recordings").clear();
-    request.onsuccess = resolve;
-    request.onerror = () => reject(request.error);
-  });
-  db.close();
 }
 
 async function requestNotifications() {
@@ -910,35 +1294,81 @@ function playTone(frequency = 540) {
   oscillator.stop(audio.currentTime + 0.24);
 }
 
-async function saveAccountName() {
-  const name = $("#accountName").value.trim();
-  if (!name) {
-    setSettingsMessage("표시 이름을 입력해주세요.");
-    renderSettings();
-    return;
-  }
-  const profileId = state.profile?.id;
-  if (!profileId) {
-    setSettingsMessage("프로필 정보를 찾지 못했습니다.");
-    renderSettings();
-    return;
-  }
-  const result = await api(`/members/${profileId}`, {
-    method: "PATCH",
-    body: JSON.stringify({ name }),
-  });
-  state.profile = result.member;
-  state.user.name = name;
-  setSettingsMessage("계정 이름을 저장했습니다.");
-  renderApp();
+function openAccountModal() {
+  state.accountModalOpen = true;
+  renderSettings();
 }
 
-async function refreshAccount() {
-  const me = await api("/me");
-  state.user = me.user;
-  state.profile = me.profile;
-  setSettingsMessage("계정 정보를 새로고침했습니다.");
-  renderApp();
+function closeAccountModal() {
+  state.accountModalOpen = false;
+  const modal = $("#accountModal");
+  if (modal) modal.remove();
+}
+
+function renderAccountModal() {
+  closeAccountModal();
+  state.accountModalOpen = true;
+  const profile = state.profile || {};
+  const modal = document.createElement("div");
+  modal.id = "accountModal";
+  modal.className = "modal-backdrop";
+  modal.innerHTML = `
+    <div class="confirm-modal account-modal">
+      <strong>관리자 정보 수정</strong>
+      <form id="accountEditForm" class="account-edit-form">
+        <label class="center-field"><span>이름</span><input name="name" value="${escapeHtml(profile.name || state.user.name || "")}" required /></label>
+        <label class="center-field"><span>전화번호</span><input name="phone" value="${escapeHtml(profile.phone || "")}" /></label>
+        <label class="center-field"><span>성별</span><select name="gender">
+          ${profileOption("", "성별 선택", profile.gender)}
+          ${profileOption("male", "남성", profile.gender)}
+          ${profileOption("female", "여성", profile.gender)}
+          ${profileOption("other", "기타", profile.gender)}
+        </select></label>
+        <label class="center-field"><span>키</span><select name="height_cm">${numberOptions(140, 210, Number(profile.height_cm || 170), "cm")}</select></label>
+        <label class="center-field"><span>몸무게</span><select name="weight_kg">${numberOptions(40, 140, Number(profile.weight_kg || 70), "kg")}</select></label>
+        <label class="center-field"><span>스탠스</span><select name="stance">
+          ${profileOption("orthodox", "오소독스", profile.stance)}
+          ${profileOption("southpaw", "사우스포", profile.stance)}
+        </select></label>
+        <label class="center-field full"><span>기본 정보</span><textarea name="injury_note">${escapeHtml(profile.injury_note || "")}</textarea></label>
+        <p id="accountEditMessage" class="form-message"></p>
+        <div class="modal-actions">
+          <button>수정 완료</button>
+          <button type="button" class="ghost" id="closeAccountModal">취소</button>
+        </div>
+      </form>
+    </div>`;
+  document.body.appendChild(modal);
+  $("#accountEditForm").addEventListener("submit", saveAccountFromModal);
+  $("#closeAccountModal").addEventListener("click", closeAccountModal);
+  modal.addEventListener("click", (event) => {
+    if (event.target.id === "accountModal") closeAccountModal();
+  });
+}
+
+async function saveAccountFromModal(event) {
+  event.preventDefault();
+  const profileId = state.profile?.id;
+  if (!profileId) return;
+  const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+  ["height_cm", "weight_kg"].forEach((key) => {
+    body[key] = Number(body[key] || 0);
+  });
+  try {
+    const result = await api(`/members/${profileId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    });
+    state.profile = result.member;
+    state.user.name = result.member.name || state.user.name;
+    state.center.owner = state.user.name;
+    saveCenterProfile();
+    setSettingsMessage("관리자 정보를 수정했습니다.");
+    closeAccountModal();
+    renderApp();
+  } catch (error) {
+    $("#accountEditMessage").textContent = error.message;
+  }
 }
 
 function logout() {
@@ -949,19 +1379,18 @@ function logout() {
 function defaultCenterProfile() {
   return {
     name: "APEX Boxing Lab",
-    owner: "김관장",
+    owner: "김관리자",
+    code: "apex",
     phone: "02-0000-0000",
     address: "서울시 강남구 테헤란로 100",
     weekdayHours: "06:00 - 23:00",
     weekendHours: "09:00 - 18:00",
     ringCount: 1,
     bagCount: 8,
-    cameraCount: 1,
-    cameraStatus: "정상",
     defaultCamera: "cam_front_01",
-    defaultFocus: "가드 · 펀치 회수",
+    defaultFocus: "guard_and_strikes",
     defaultSessionMinutes: 3,
-    notice: "오늘은 가드 복귀와 중심 이동을 집중 코칭합니다.",
+    monthlyMembershipPrice: 120000,
   };
 }
 
@@ -981,6 +1410,7 @@ function renderCenterInfo() {
   const summary = dashboardSummary();
   const memberStatus = dashboardMemberStatus();
   const center = state.center;
+  const revenue = centerRevenueSummary();
   $("#viewContent").innerHTML = `
     <section class="center-layout">
       <article class="admin-board center-profile-card">
@@ -994,7 +1424,7 @@ function renderCenterInfo() {
         </div>
         <div class="center-metrics">
           ${centerMetric("등록 회원", `${state.members.length}명`)}
-          ${centerMetric("활성 회원", `${memberStatus.active}명`)}
+          ${centerMetric("출석 회원", `${memberStatus.attended}명`)}
           ${centerMetric("오늘 세션", `${summary.todaySessions}건`)}
           ${centerMetric("평균 점수", `${summary.averageScore}점`)}
         </div>
@@ -1011,6 +1441,7 @@ function renderCenterInfo() {
           <div class="center-form-grid">
             ${centerInput("name", "센터명", center.name)}
             ${centerInput("owner", "대표자", center.owner)}
+            ${centerInput("code", "센터 코드", center.code)}
             ${centerInput("phone", "연락처", center.phone)}
             ${centerInput("address", "주소", center.address)}
             ${centerInput("weekdayHours", "평일 운영시간", center.weekdayHours)}
@@ -1028,13 +1459,10 @@ function renderCenterInfo() {
           <div class="center-form-grid compact">
             ${centerInput("ringCount", "링 수", center.ringCount, "number")}
             ${centerInput("bagCount", "샌드백 수", center.bagCount, "number")}
-            ${centerInput("cameraCount", "카메라 수", center.cameraCount, "number")}
-            ${centerInput("cameraStatus", "카메라 상태", center.cameraStatus)}
           </div>
           <div class="facility-status">
             ${facilityItem("링", `${center.ringCount}개`, "스파링/미트 공간")}
             ${facilityItem("샌드백", `${center.bagCount}개`, "타격 훈련")}
-            ${facilityItem("카메라", `${center.cameraCount}대`, center.cameraStatus)}
           </div>
         </article>
 
@@ -1047,7 +1475,7 @@ function renderCenterInfo() {
           </div>
           <div class="center-form-grid compact">
             ${centerInput("defaultCamera", "기본 카메라", center.defaultCamera)}
-            ${centerInput("defaultFocus", "기본 코칭 초점", center.defaultFocus)}
+            ${centerSelect("defaultFocus", "기본 코칭 초점", center.defaultFocus, coachingFocusOptions())}
             ${centerInput("defaultSessionMinutes", "기본 라운드 시간(분)", center.defaultSessionMinutes, "number")}
           </div>
         </article>
@@ -1055,14 +1483,29 @@ function renderCenterInfo() {
         <article class="admin-board center-panel">
           <div class="dashboard-section-head">
             <div>
-              <small>Notice</small>
-              <h3>센터 공지</h3>
+              <small>Revenue</small>
+              <h3>매출</h3>
             </div>
           </div>
-          <label class="center-field full">
-            <span>회원 안내 문구</span>
-            <textarea id="centerNotice">${escapeHtml(center.notice)}</textarea>
-          </label>
+          <div class="center-form-grid compact revenue-summary">
+            ${centerInput("monthlyMembershipPrice", "한달 이용권 가격", center.monthlyMembershipPrice, "number")}
+            ${centerMetric("이용중 회원", `${revenue.activeMembers}명`)}
+            ${centerMetric("예상 월 매출", currency(revenue.currentMonthly))}
+          </div>
+          <div class="revenue-chart" aria-label="최근 6개월 매출 차트">
+            <div class="revenue-y-axis">
+              ${revenue.ticks.map((tick) => `<span>${shortCurrency(tick)}</span>`).join("")}
+            </div>
+            <div class="revenue-plot">
+              ${revenue.months.map((item) => `
+                <div class="revenue-column" style="--bar:${item.percent}%">
+                  <span class="revenue-stick"></span>
+                </div>`).join("")}
+            </div>
+            <div class="revenue-x-axis">
+              ${revenue.months.map((item) => `<span>${item.label}</span>`).join("")}
+            </div>
+          </div>
         </article>
       </section>
 
@@ -1073,12 +1516,11 @@ function renderCenterInfo() {
       </div>
     </section>`;
   document.querySelectorAll("[data-center-field]").forEach((input) => {
-    input.addEventListener("input", () => {
+    const updateCenterField = () => {
       state.center[input.dataset.centerField] = input.type === "number" ? Number(input.value || 0) : input.value;
-    });
-  });
-  $("#centerNotice").addEventListener("input", (event) => {
-    state.center.notice = event.target.value;
+    };
+    input.addEventListener("input", updateCenterField);
+    input.addEventListener("change", updateCenterField);
   });
   $("#saveCenterInfo").addEventListener("click", () => {
     saveCenterProfile();
@@ -1097,23 +1539,294 @@ function centerInput(key, label, value, type = "text") {
   return `<label class="center-field"><span>${label}</span><input data-center-field="${key}" type="${type}" value="${escapeHtml(value)}" /></label>`;
 }
 
+function centerSelect(key, label, value, options) {
+  return `<label class="center-field"><span>${label}</span><select data-center-field="${key}">${options.map(([optionValue, optionLabel]) => `<option value="${optionValue}" ${String(value) === optionValue ? "selected" : ""}>${optionLabel}</option>`).join("")}</select></label>`;
+}
+
 function centerMetric(label, value) {
   return `<div><small>${label}</small><strong>${value}</strong></div>`;
+}
+
+function coachingFocusOptions() {
+  return [
+    ["guard_and_strikes", "가드 · 펀치 회수"],
+    ["jab", "잽"],
+    ["one_two", "원투"],
+    ["footwork", "풋워크"],
+    ["balance", "중심 이동"],
+    ["defense", "방어 자세"],
+  ];
+}
+
+function centerRevenueSummary() {
+  const activeMembers = state.members.filter((member, index) => memberUsageState(member, index) === "active").length;
+  const price = Number(state.center.monthlyMembershipPrice || 0);
+  const currentMonthly = activeMembers * price;
+  const now = new Date();
+  const months = [];
+  for (let index = 5; index >= 0; index--) {
+    const date = new Date(now.getFullYear(), now.getMonth() - index, 1);
+    const ratio = 0.72 + (6 - index) * 0.055;
+    const amount = Math.round(currentMonthly * Math.min(1, ratio));
+    months.push({
+      label: `${date.getMonth() + 1}월`,
+      amount,
+      percent: currentMonthly ? Math.max(12, Math.round((amount / currentMonthly) * 100)) : 0,
+    });
+  }
+  const maxAmount = Math.max(currentMonthly, ...months.map((item) => item.amount), 1);
+  const tickUnit = Math.max(10000, Math.ceil(maxAmount / 4 / 10000) * 10000);
+  const topTick = tickUnit * 4;
+  const ticks = [topTick, tickUnit * 3, tickUnit * 2, tickUnit, 0];
+  months.forEach((item) => {
+    item.percent = Math.max(4, Math.round((item.amount / topTick) * 100));
+  });
+  return { activeMembers, currentMonthly, months, ticks };
+}
+
+function currency(value) {
+  return `${Number(value || 0).toLocaleString("ko-KR")}원`;
+}
+
+function shortCurrency(value) {
+  const amount = Number(value || 0);
+  if (amount >= 10000) return `${Math.round(amount / 10000).toLocaleString("ko-KR")}만`;
+  return `${amount.toLocaleString("ko-KR")}원`;
 }
 
 function facilityItem(label, value, note) {
   return `<div><span>${label}</span><strong>${value}</strong><small>${note}</small></div>`;
 }
 
-function renderStaff() {
-  const staff = [
-    ["김관장", "총괄", "복싱 클래스 · AI 코칭"],
-    ["박코치", "코치", "초급반 · 출석 관리"],
-    ["이매니저", "운영", "회원 등록 · 이용권 관리"],
+function defaultStaff() {
+  return [
+    {
+      id: "staff_owner",
+      name: "김관리자",
+      role: "관리자",
+      phone: "010-1000-1000",
+      area: "총괄 · AI 코칭",
+      status: "근무 중",
+      schedule: "월-금 10:00-21:00",
+      memo: "신규 회원 상담과 코칭 품질 점검 담당",
+    },
+    {
+      id: "staff_coach",
+      name: "박코치",
+      role: "코치",
+      phone: "010-2000-2000",
+      area: "초급반 · 미트",
+      status: "근무 중",
+      schedule: "월/수/금 14:00-22:00",
+      memo: "가드 복귀와 풋워크 교정 담당",
+    },
+    {
+      id: "staff_manager",
+      name: "이매니저",
+      role: "운영",
+      phone: "010-3000-3000",
+      area: "회원 등록 · 출석",
+      status: "휴무",
+      schedule: "화-토 09:00-18:00",
+      memo: "이용권 관리와 공지 전달 담당",
+    },
   ];
-  $("#viewContent").innerHTML = `<section class="admin-board staff-grid">${staff
-    .map(([name, role, note]) => card(name, role, note))
-    .join("")}</section>`;
+}
+
+function loadStaff() {
+  try {
+    return JSON.parse(localStorage.getItem(STAFF_KEY) || "null") || defaultStaff();
+  } catch {
+    return defaultStaff();
+  }
+}
+
+function saveStaff() {
+  localStorage.setItem(STAFF_KEY, JSON.stringify(state.staff));
+}
+
+function renderStaff() {
+  const selected = state.staff.find((staff) => staff.id === state.selectedStaffId);
+  const roleCounts = staffRoleCounts();
+  const workingCount = state.staff.filter((staff) => staff.status === "근무 중").length;
+  const rows = state.staff.map((staff) => `
+    <tr class="${selected?.id === staff.id ? "selected-row" : ""}">
+      <td><span class="avatar">${staff.name.slice(0, 1)}</span>${escapeHtml(staff.name)}</td>
+      <td>${escapeHtml(staff.role)}</td>
+      <td>${escapeHtml(staff.phone)}</td>
+      <td>${escapeHtml(staff.area)}</td>
+      <td><span class="status-pill ${staff.status === "근무 중" ? "active" : "off"}">${escapeHtml(staff.status)}</span></td>
+      <td><button class="ghost small-button" data-staff-select="${staff.id}">수정</button></td>
+    </tr>`).join("");
+  $("#viewContent").innerHTML = `
+    <section class="staff-layout">
+      <div class="dashboard-kpis">
+        ${dashboardMetric("전체 직원", `${state.staff.length}명`, "등록된 직원")}
+        ${dashboardMetric("오늘 근무", `${workingCount}명`, "근무 중 상태")}
+        ${dashboardMetric("코치", `${roleCounts.coach}명`, "코칭 담당")}
+        ${dashboardMetric("운영 담당", `${roleCounts.operation}명`, "운영/관리")}
+      </div>
+
+      <section class="staff-main">
+        <article class="admin-board">
+          <div class="dashboard-section-head">
+            <div>
+              <small>Staff</small>
+              <h3>직원 목록</h3>
+            </div>
+            <div class="settings-actions">
+              <button id="toggleStaffForm">${state.showStaffForm ? "등록 취소" : "직원 등록"}</button>
+            </div>
+          </div>
+          ${state.showStaffForm ? staffCreateForm() : ""}
+          <div class="table-wrap">
+            <table class="admin-table staff-table">
+              <thead><tr><th>이름</th><th>역할</th><th>연락처</th><th>담당 영역</th><th>상태</th><th>관리</th></tr></thead>
+              <tbody>${rows || `<tr><td colspan="6">등록된 직원이 없습니다.</td></tr>`}</tbody>
+            </table>
+          </div>
+        </article>
+
+        ${selected ? `<aside class="admin-board staff-detail">${staffDetail(selected)}</aside>` : ""}
+      </section>
+
+      <p class="form-message staff-message">${state.staffMessage}</p>
+    </section>`;
+  $("#toggleStaffForm").addEventListener("click", () => {
+    state.showStaffForm = !state.showStaffForm;
+    renderStaff();
+  });
+  document.querySelectorAll("[data-staff-select]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.selectedStaffId = button.dataset.staffSelect;
+      renderStaff();
+    });
+  });
+  document.querySelectorAll("[data-staff-status]").forEach((button) => {
+    button.addEventListener("click", () => updateStaffStatus(button.dataset.staffStatus));
+  });
+  const form = $("#staffCreateForm");
+  if (form) form.addEventListener("submit", createStaffFromForm);
+  const saveButton = $("#saveStaffDetail");
+  if (saveButton) saveButton.addEventListener("click", saveSelectedStaffDetail);
+  const deleteButton = $("#deleteStaff");
+  if (deleteButton) deleteButton.addEventListener("click", deleteSelectedStaff);
+  const closeButton = $("#closeStaffDetail");
+  if (closeButton) {
+    closeButton.addEventListener("click", () => {
+      state.selectedStaffId = "";
+      renderStaff();
+    });
+  }
+}
+
+function staffRoleCounts() {
+  return {
+    coach: state.staff.filter((staff) => staff.role.includes("코치")).length,
+    operation: state.staff.filter((staff) => ["운영", "매니저", "관리자"].some((role) => staff.role.includes(role))).length,
+  };
+}
+
+function staffCreateForm() {
+  return `<form id="staffCreateForm" class="staff-create-form">
+    <input name="name" placeholder="이름" required />
+    <select name="role" required>
+      <option value="코치">코치</option>
+      <option value="운영">운영</option>
+      <option value="관리자">관리자</option>
+      <option value="파트타임">파트타임</option>
+    </select>
+    <input name="phone" placeholder="연락처" required />
+    <input name="area" placeholder="담당 영역" required />
+    <input name="schedule" placeholder="근무 스케줄" />
+    <button>등록</button>
+  </form>`;
+}
+
+function staffDetail(staff) {
+  return `
+    <div class="staff-profile">
+      <span class="avatar large-avatar">${staff.name.slice(0, 1)}</span>
+      <div>
+        <small>Selected Staff</small>
+        <h3>직원 정보 수정</h3>
+        <p>${escapeHtml(staff.role)} · ${escapeHtml(staff.status)}</p>
+      </div>
+      <button id="closeStaffDetail" class="ghost small-button" type="button">닫기</button>
+    </div>
+    <div class="staff-status-actions">
+      <button class="${staff.status === "근무 중" ? "active" : ""}" data-staff-status="근무 중">근무 중</button>
+      <button class="${staff.status === "휴무" ? "active" : ""}" data-staff-status="휴무">휴무</button>
+    </div>
+    <div class="staff-detail-form">
+      ${staffField("name", "이름", staff.name)}
+      ${staffField("role", "역할", staff.role)}
+      ${staffField("phone", "연락처", staff.phone)}
+      ${staffField("area", "담당 영역", staff.area)}
+      ${staffField("schedule", "근무 스케줄", staff.schedule)}
+      <label class="center-field full"><span>내부 메모</span><textarea id="staffMemo">${escapeHtml(staff.memo || "")}</textarea></label>
+    </div>
+    <div class="staff-detail-actions">
+      <button id="saveStaffDetail">수정 완료</button>
+      <button id="deleteStaff" class="delete-button">직원 삭제</button>
+    </div>`;
+}
+
+function staffField(key, label, value) {
+  return `<label class="center-field"><span>${label}</span><input data-staff-field="${key}" value="${escapeHtml(value || "")}" /></label>`;
+}
+
+function createStaffFromForm(event) {
+  event.preventDefault();
+  const body = Object.fromEntries(new FormData(event.currentTarget).entries());
+  const staff = {
+    id: `staff_${Date.now()}`,
+    name: String(body.name || "").trim(),
+    role: String(body.role || "코치"),
+    phone: String(body.phone || ""),
+    area: String(body.area || ""),
+    status: "근무 중",
+    schedule: String(body.schedule || ""),
+    memo: "",
+  };
+  state.staff.push(staff);
+  state.selectedStaffId = staff.id;
+  state.showStaffForm = false;
+  state.staffMessage = "직원을 등록했습니다.";
+  saveStaff();
+  renderStaff();
+}
+
+function saveSelectedStaffDetail() {
+  const staff = state.staff.find((item) => item.id === state.selectedStaffId);
+  if (!staff) return;
+  document.querySelectorAll("[data-staff-field]").forEach((input) => {
+    staff[input.dataset.staffField] = input.value;
+  });
+  staff.memo = $("#staffMemo").value;
+  state.staffMessage = "직원 정보를 저장했습니다.";
+  saveStaff();
+  renderStaff();
+}
+
+function updateStaffStatus(status) {
+  const staff = state.staff.find((item) => item.id === state.selectedStaffId);
+  if (!staff) return;
+  staff.status = status;
+  state.staffMessage = `${staff.name} 상태를 ${status}(으)로 변경했습니다.`;
+  saveStaff();
+  renderStaff();
+}
+
+function deleteSelectedStaff() {
+  const staff = state.staff.find((item) => item.id === state.selectedStaffId);
+  if (!staff) return;
+  if (!confirm(`${staff.name} 직원을 삭제할까요?`)) return;
+  state.staff = state.staff.filter((item) => item.id !== staff.id);
+  state.selectedStaffId = "";
+  state.staffMessage = "직원을 삭제했습니다.";
+  saveStaff();
+  renderStaff();
 }
 
 function renderAttendance(selectedDay = new Date().getDate()) {
@@ -1128,7 +1841,8 @@ function renderAttendance(selectedDay = new Date().getDate()) {
   for (let i = 0; i < startPad; i++) cells.push(`<button class="calendar-day empty"></button>`);
   for (let day = 1; day <= lastDay; day++) {
     const list = attendance[day] || [];
-    cells.push(`<button class="calendar-day ${day === selectedDay ? "selected" : ""}" data-day="${day}">
+    const weekendClass = dayOfWeekClass(year, month, day);
+    cells.push(`<button class="calendar-day ${weekendClass} ${day === selectedDay ? "selected" : ""}" data-day="${day}">
       <strong>${day}</strong><span>${list.length}명 출석</span>
     </button>`);
   }
@@ -1196,6 +1910,13 @@ function buildAttendance(year, month) {
   return data;
 }
 
+function dayOfWeekClass(year, month, day) {
+  const weekday = new Date(year, month, day).getDay();
+  if (weekday === 0) return "sunday";
+  if (weekday === 6) return "saturday";
+  return "";
+}
+
 async function startSession() {
   if (state.activeSessionId) return;
   resetHud();
@@ -1203,7 +1924,7 @@ async function startSession() {
   if (!cameraReady) return;
   const created = await api("/sessions", {
     method: "POST",
-    body: JSON.stringify({ focus: "guard_and_strikes" }),
+    body: JSON.stringify({ focus: state.center.defaultFocus || "guard_and_strikes" }),
   });
   state.activeSessionId = created.session.id;
   state.activeSessionStartedAt = created.session.started_at;
@@ -1381,14 +2102,23 @@ function startRecording() {
     $("#feedbackText").textContent = "이 브라우저는 코칭 화면 녹화를 지원하지 않습니다. 세션 기록만 저장됩니다.";
     return;
   }
-  const options = MediaRecorder.isTypeSupported("video/webm;codecs=vp8")
-    ? { mimeType: "video/webm;codecs=vp8" }
-    : {};
+  const options = preferredRecordingOptions();
   state.recorder = new MediaRecorder(stream, options);
   state.recorder.addEventListener("dataavailable", (event) => {
     if (event.data.size > 0) state.recordedChunks.push(event.data);
   });
   state.recorder.start(1000);
+}
+
+function preferredRecordingOptions() {
+  const candidates = [
+    "video/mp4;codecs=avc1.42E01E",
+    "video/mp4",
+    "video/webm;codecs=vp8",
+    "video/webm",
+  ];
+  const mimeType = candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+  return mimeType ? { mimeType } : {};
 }
 
 function startHudCapture() {
@@ -1694,29 +2424,69 @@ function playRecording(sessionId) {
   viewer.addEventListener("beforeunload", () => URL.revokeObjectURL(url));
 }
 
-function confirmDeleteSession(sessionId) {
-  state.pendingDeleteSessionId = sessionId;
-  $("#confirmModal").classList.remove("hidden");
-}
-
-function closeDeleteModal() {
-  state.pendingDeleteSessionId = "";
-  $("#confirmModal").classList.add("hidden");
-}
-
-async function deletePendingSession() {
-  const sessionId = state.pendingDeleteSessionId;
-  if (!sessionId) return;
+async function downloadRecording(sessionId) {
+  const recording = state.localRecordings[sessionId];
+  if (!recording) return;
+  if (recording.mimeType.includes("mp4")) {
+    downloadBlob(recording.blob, `${sessionId}.mp4`);
+    return;
+  }
   try {
+    const mp4 = await convertRecordingToMp4(recording.blob);
+    downloadBlob(mp4, `${sessionId}.mp4`);
+  } catch (error) {
+    alert(`${error.message}\n\nMP4 변환을 할 수 없어 원본 WebM 파일로 저장합니다.`);
+    downloadBlob(recording.blob, `${sessionId}.${recordingExtension(recording.mimeType)}`);
+  }
+}
+
+function recordingExtension(mimeType = "") {
+  if (mimeType.includes("mp4")) return "mp4";
+  if (mimeType.includes("webm")) return "webm";
+  return "video";
+}
+
+async function convertRecordingToMp4(blob) {
+  const headers = { "Content-Type": blob.type || "video/webm" };
+  if (state.token) headers.Authorization = `Bearer ${state.token}`;
+  const response = await fetch("/api/recordings/convert", {
+    method: "POST",
+    headers,
+    body: blob,
+  });
+  if (!response.ok) {
+    let message = "MP4 변환에 실패했습니다.";
+    try {
+      const payload = await response.json();
+      message = payload.error || payload.detail || message;
+    } catch {
+    }
+    throw new Error(message);
+  }
+  return response.blob();
+}
+
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+async function deleteSelectedMemberRecords() {
+  const selectedIds = [...state.selectedRecordIds];
+  if (!selectedIds.length) return;
+  if (!confirm(`선택한 운동기록 ${selectedIds.length}개를 삭제할까요?`)) return;
+  for (const sessionId of selectedIds) {
     await api(`/sessions/${sessionId}`, { method: "DELETE" });
     await deleteRecording(sessionId);
     delete state.localRecordings[sessionId];
-    state.sessions = state.sessions.filter((session) => session.id !== sessionId);
-    closeDeleteModal();
-    renderMembers();
-  } catch (error) {
-    alert(`삭제에 실패했습니다. 서버를 재시작한 뒤 다시 시도해주세요.\n\n${error.message}`);
   }
+  state.sessions = state.sessions.filter((session) => !state.selectedRecordIds.has(session.id));
+  state.selectedRecordIds.clear();
+  renderMembers();
 }
 
 function startSessionTimer() {
@@ -1998,6 +2768,10 @@ function normalizeUsername(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function normalizeCenterCode(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9_-]/g, "").slice(0, 24);
+}
+
 function isValidPassword(value) {
   return String(value || "").length >= 8 && /[^A-Za-z0-9]/.test(value);
 }
@@ -2046,14 +2820,6 @@ $("#stopSessionHud").addEventListener("click", async () => {
   } catch (error) {
     $("#feedbackText").textContent = error.message;
   }
-});
-
-$("#confirmDeleteYes").addEventListener("click", deletePendingSession);
-
-$("#confirmDeleteNo").addEventListener("click", closeDeleteModal);
-
-$("#confirmModal").addEventListener("click", (event) => {
-  if (event.target.id === "confirmModal") closeDeleteModal();
 });
 
 $("#retryCamera").addEventListener("click", async () => {

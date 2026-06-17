@@ -18,6 +18,24 @@ class AuthorizationTests(unittest.TestCase):
         owner_profile = self.store.profile_for_user(self.owner.id)
         self.assertFalse(can_read_profile(self.member, owner_profile))
 
+    def test_center_code_resolves_created_center(self):
+        center = self.store.create_gym("Blue Corner Center", "blue-corner")
+
+        self.assertEqual(self.store.find_gym_by_code("BLUE-CORNER").id, center.id)
+
+    def test_admin_cannot_read_member_in_other_center(self):
+        center = self.store.create_gym("School Sports Center", "school")
+        other_member = self.store.create_user(
+            "school_member",
+            "Member!123",
+            "MEMBER",
+            "학교회원",
+            center.id,
+        )
+        other_profile = self.store.create_profile(other_member, "010-9999-9999", "2000-01-01", "other")
+
+        self.assertFalse(can_read_profile(self.owner, other_profile))
+
     def test_session_scope_matches_role(self):
         session = TrainingSession(
             id="session_test",

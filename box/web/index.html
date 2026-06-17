@@ -22,7 +22,7 @@
         <nav id="nav"></nav>
         <div class="account">
           <span id="userName"></span>
-          <button id="logoutButton" class="ghost">로그아웃</button>
+          <button id="logoutButton" class="ghost" title="로그아웃"><span class="logout-icon" aria-hidden="true"><svg class="logout-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></span><span class="logout-label">로그아웃</span></button>
         </div>
       </aside>
 
@@ -52,7 +52,7 @@
               </div>
             </div>
             <div class="auth-tabs">
-              <button class="auth-tab active" data-auth-mode="owner">관장</button>
+              <button class="auth-tab active" data-auth-mode="owner">관리자</button>
               <button class="auth-tab" data-auth-mode="member">회원</button>
             </div>
 
@@ -122,17 +122,6 @@
           </div>
         </section>
       </main>
-
-      <div id="confirmModal" class="modal-backdrop hidden">
-        <section class="confirm-modal">
-          <strong>삭제하시겠습니까?</strong>
-          <p>선택한 운동기록과 녹화본이 삭제됩니다.</p>
-          <div class="confirm-actions">
-            <button id="confirmDeleteYes" class="danger">예</button>
-            <button id="confirmDeleteNo" class="ghost">아니요</button>
-          </div>
-        </section>
-      </div>
     </div>
     <script src="/app.js"></script>
   </body>

@@ -21,6 +21,7 @@ SECRET = "local-mvp-development-secret"
 class Gym:
     id: str
     name: str
+    code: str
 
 
 @dataclasses.dataclass
@@ -85,7 +86,7 @@ class Store:
     @property
     def gyms(self) -> dict[str, Gym]:
         rows = self.conn.execute("select * from gyms").fetchall()
-        return {row["id"]: Gym(**dict(row)) for row in rows}
+        return {row["id"]: gym_from_row(row) for row in rows}
 
     @property
     def users(self) -> dict[str, User]:
@@ -113,7 +114,8 @@ class Store:
                 """
                 create table if not exists gyms (
                     id text primary key,
-                    name text not null
+                    name text not null,
+                    code text not null unique
                 );
 
                 create table if not exists users (
@@ -171,6 +173,7 @@ class Store:
                 """
             )
             self.ensure_column("users", "username", "text")
+            self.ensure_column("gyms", "code", "text not null default ''")
             self.ensure_column("users", "email", "text not null default ''")
             self.ensure_column("member_profiles", "phone", "text not null default ''")
             self.ensure_column("member_profiles", "birthdate", "text not null default ''")
@@ -181,7 +184,9 @@ class Store:
             self.ensure_column("member_profiles", "stance", "text not null default 'orthodox'")
             self.ensure_column("member_profiles", "injury_note", "text not null default ''")
             self.backfill_usernames()
+            self.backfill_gym_codes()
             self.conn.execute("create unique index if not exists idx_users_username on users(username)")
+            self.conn.execute("create unique index if not exists idx_gyms_code on gyms(code)")
 
     def ensure_column(self, table: str, column: str, definition: str) -> None:
         columns = [row["name"] for row in self.conn.execute(f"pragma table_info({table})").fetchall()]
@@ -199,15 +204,25 @@ class Store:
                 username = f"{username}{index}"
             self.conn.execute("update users set username = ? where id = ?", (username, row["id"]))
 
+    def backfill_gym_codes(self) -> None:
+        rows = self.conn.execute("select id, name, code from gyms").fetchall()
+        for index, row in enumerate(rows, start=1):
+            if row["code"]:
+                continue
+            code = normalize_center_code(row["id"].replace("gym_", "")) or normalize_center_code(row["name"]) or f"center{index}"
+            while self.find_gym_by_code(code) is not None:
+                code = f"{code}{index}"
+            self.conn.execute("update gyms set code = ? where id = ?", (code, row["id"]))
+
     def seed(self) -> None:
         with self.lock, self.conn:
             self.conn.execute(
-                "insert or ignore into gyms (id, name) values (?, ?)",
-                ("gym_apex", "APEX Boxing Lab"),
+                "insert or ignore into gyms (id, name, code) values (?, ?, ?)",
+                ("gym_apex", "APEX Boxing Lab", "apex"),
             )
         owner = self.find_user_by_username("owner")
         if owner is None:
-            owner = self.create_user("owner", "Owner!123", "OWNER", "김관장", "gym_apex")
+            owner = self.create_user("owner", "Owner!123", "OWNER", "김관리자", "gym_apex")
             self.create_profile(owner, "010-0000-0001", "1985-01-01", "male")
         else:
             self.update_seed_password(owner, "Owner!123")
@@ -239,6 +254,30 @@ class Store:
     def get_user(self, user_id: str) -> User | None:
         row = self.conn.execute("select * from users where id = ?", (user_id,)).fetchone()
         return user_from_row(row) if row else None
+
+    def find_gym_by_code(self, code: str) -> Gym | None:
+        row = self.conn.execute(
+            "select * from gyms where lower(code) = lower(?)",
+            (normalize_center_code(code),),
+        ).fetchone()
+        return gym_from_row(row) if row else None
+
+    def create_gym(self, name: str, code: str = "") -> Gym:
+        name = name.strip()
+        if not name:
+            raise ValueError("center name is required")
+        code = normalize_center_code(code) if code else center_code_from_name(name)
+        if not code:
+            code = f"center{secrets.token_hex(2)}"
+        while self.find_gym_by_code(code) is not None:
+            code = f"{code}{secrets.token_hex(1)}"
+        gym = Gym(id=f"gym_{secrets.token_hex(4)}", name=name, code=code)
+        with self.lock, self.conn:
+            self.conn.execute(
+                "insert into gyms (id, name, code) values (?, ?, ?)",
+                (gym.id, gym.name, gym.code),
+            )
+        return gym
 
     def create_user(self, username: str, password: str, role: str, name: str, gym_id: str, email: str = "") -> User:
         username = normalize_username(username)
@@ -426,6 +465,15 @@ def normalize_username(username: str) -> str:
     return username.strip().lower()
 
 
+def normalize_center_code(code: str) -> str:
+    return re.sub(r"[^a-z0-9_-]", "", code.strip().lower())[:24]
+
+
+def center_code_from_name(name: str) -> str:
+    code = normalize_center_code(name.replace(" ", "_"))
+    return code or f"center{secrets.token_hex(2)}"
+
+
 def validate_username(username: str) -> None:
     if not re.fullmatch(r"[a-z0-9_]{4,20}", username):
         raise ValueError("username must be 4-20 lowercase letters, numbers, or underscores")
@@ -441,6 +489,12 @@ def user_from_row(row: sqlite3.Row) -> User:
     values.setdefault("username", values.get("email", "").split("@")[0])
     values.setdefault("email", "")
     return User(**{key: values[key] for key in ["id", "gym_id", "username", "email", "password_hash", "role", "name"]})
+
+
+def gym_from_row(row: sqlite3.Row) -> Gym:
+    values = dict(row)
+    values.setdefault("code", normalize_center_code(values["id"].replace("gym_", "")))
+    return Gym(**{key: values[key] for key in ["id", "name", "code"]})
 
 
 def profile_from_row(row: sqlite3.Row) -> MemberProfile:
