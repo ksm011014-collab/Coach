@@ -23,6 +23,7 @@ const state = {
   activeSessionId: "",
   activeSessionStartedAt: 0,
   sessionTimer: null,
+  roundTimer: null,
   recorder: null,
   recordedChunks: [],
   recordingStream: null,
@@ -33,9 +34,14 @@ const state = {
   poseLoop: null,
   poseRunning: false,
   lastVideoTime: -1,
+  poseTimestampMs: 0,
   poseErrorShown: false,
   feedbackLog: [],
   lastFeedbackAt: 0,
+  feedbackWindow: null,
+  sessionFeedback: null,
+  lastMotionSample: null,
+  motionHistory: [],
   settings: loadSettings(),
   settingsMessage: "",
   center: loadCenterProfile(),
@@ -46,6 +52,18 @@ const state = {
   staffMessage: "",
   accountModalOpen: false,
 };
+
+const FEEDBACK_WINDOW_MS = 5000;
+const MOTION_EVENT_COOLDOWN_MS = 700;
+const ACTION_TYPES = [
+  ["jab", "잽"],
+  ["right", "라이트"],
+  ["oneTwo", "원투"],
+  ["hook", "훅"],
+  ["upper", "어퍼"],
+  ["duck", "더킹"],
+  ["weave", "위빙"],
+];
 
 const navItems = [
   ["coach", "실시간 코칭"],
@@ -871,6 +889,13 @@ function renderMembers() {
   document.querySelectorAll("[data-download-recording-id]").forEach((button) => {
     button.addEventListener("click", () => downloadRecording(button.dataset.downloadRecordingId));
   });
+  document.querySelectorAll("[data-download-feedback-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const session = state.sessions.find((item) => item.id === button.dataset.downloadFeedbackId);
+      const report = parseFeedbackReport(session);
+      if (report) downloadFeedbackCsv(report);
+    });
+  });
   document.querySelectorAll("[data-record-check]").forEach((checkbox) => {
     checkbox.addEventListener("change", () => {
       if (checkbox.checked) {
@@ -919,16 +944,19 @@ function memberRecordPanel(member) {
   const rows = sessions.map((session) => {
     const recording = state.localRecordings[session.id];
     const status = session.ended_at ? "완료" : "진행 중";
-    const recordingButton = recording
-      ? `<button class="ghost small-button" data-recording-id="${session.id}">녹화 보기</button><button class="ghost small-button" data-download-recording-id="${session.id}">다운로드</button>`
-      : "-";
+    const report = parseFeedbackReport(session);
+    const actions = [
+      recording ? `<button class="ghost small-button" data-recording-id="${session.id}">녹화 보기</button>` : "",
+      recording ? `<button class="ghost small-button" data-download-recording-id="${session.id}">다운로드</button>` : "",
+      report ? `<button class="ghost small-button" data-download-feedback-id="${session.id}">피드백 저장</button>` : "",
+    ].filter(Boolean).join("");
     return `<tr>
       <td><input type="checkbox" data-record-check="${session.id}" ${state.selectedRecordIds.has(session.id) ? "checked" : ""} /></td>
       <td>${formatDateTime(session.started_at)}</td>
       <td>${session.ended_at ? formatDuration(session.started_at, session.ended_at) : "측정 중"}</td>
       <td>${session.overall_score || 0}</td>
       <td>${status}</td>
-      <td><div class="record-actions">${recordingButton}</div></td>
+      <td><div class="record-actions">${actions || "-"}</div></td>
     </tr>`;
   }).join("");
   return `<section class="record-panel">
@@ -946,7 +974,7 @@ function memberRecordPanel(member) {
     </div>
     <div class="table-wrap">
       <table class="admin-table record-table">
-        <thead><tr><th>선택</th><th>시작 시간</th><th>운동 시간</th><th>점수</th><th>상태</th><th>녹화</th></tr></thead>
+        <thead><tr><th>선택</th><th>시작 시간</th><th>운동 시간</th><th>점수</th><th>상태</th><th>파일</th></tr></thead>
         <tbody>${rows || `<tr><td colspan="6">저장된 운동기록이 없습니다.</td></tr>`}</tbody>
       </table>
     </div>
@@ -1108,6 +1136,7 @@ function defaultSettings() {
     theme: "dark",
     notifications: false,
     voice: false,
+    voiceLanguage: "ko-KR",
     sound: true,
     feedbackCooldownSeconds: 6,
   };
@@ -1160,6 +1189,13 @@ function renderSettings() {
           <span><strong>음성 피드백</strong><small>코칭 문장을 읽어줍니다</small></span>
           <input type="checkbox" data-setting-toggle="voice" ${state.settings.voice ? "checked" : ""} />
         </label>
+        <div class="settings-field">
+          <span>음성 언어</span>
+          <div class="segmented setting-segment">
+            ${settingButton("ko-KR", "한국어", state.settings.voiceLanguage === "ko-KR", "voice-language")}
+            ${settingButton("en-US", "English", state.settings.voiceLanguage === "en-US", "voice-language")}
+          </div>
+        </div>
         <label class="setting-row">
           <span><strong>효과음</strong><small>세션 시작/종료 신호음</small></span>
           <input type="checkbox" data-setting-toggle="sound" ${state.settings.sound ? "checked" : ""} />
@@ -1199,6 +1235,14 @@ function renderSettings() {
       renderApp();
     });
   });
+  document.querySelectorAll("[data-setting-voice-language]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.settings.voiceLanguage = button.dataset.settingVoiceLanguage;
+      setSettingsMessage("음성 언어가 저장되었습니다.");
+      saveSettings();
+      renderSettings();
+    });
+  });
   document.querySelectorAll("[data-setting-toggle]").forEach((input) => {
     input.addEventListener("change", () => {
       state.settings[input.dataset.settingToggle] = input.checked;
@@ -1209,7 +1253,7 @@ function renderSettings() {
     });
   });
   $("#requestNotifications").addEventListener("click", requestNotifications);
-  $("#testVoice").addEventListener("click", () => speakText("음성 피드백이 켜져 있습니다.", true));
+  $("#testVoice").addEventListener("click", () => speakText(voiceLine("음성 피드백이 켜져 있습니다.", "Voice feedback is enabled."), true));
   $("#testSound").addEventListener("click", () => playTone(720));
   $("#editAccountInfo").addEventListener("click", openAccountModal);
   $("#saveAllSettings").addEventListener("click", saveAllSettings);
@@ -1265,7 +1309,8 @@ function speakText(text, force = false) {
     return;
   }
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "ko-KR";
+  utterance.lang = voiceLanguage();
+  utterance.voice = preferredVoice(utterance.lang);
   utterance.rate = 1;
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);
@@ -1275,7 +1320,22 @@ function speakFeedback(text) {
   const now = Date.now();
   if (now - state.lastFeedbackAt < state.settings.feedbackCooldownSeconds * 1000) return;
   state.lastFeedbackAt = now;
-  speakText(text);
+  speakText(localizedFeedbackText(text));
+}
+
+function voiceLanguage() {
+  return state.settings.voiceLanguage === "en-US" ? "en-US" : "ko-KR";
+}
+
+function preferredVoice(language) {
+  const voices = window.speechSynthesis.getVoices();
+  return voices.find((voice) => voice.lang === language)
+    || voices.find((voice) => voice.lang?.startsWith(language.slice(0, 2)))
+    || null;
+}
+
+function voiceLine(ko, en) {
+  return voiceLanguage() === "en-US" ? en : ko;
 }
 
 function playTone(frequency = 540) {
@@ -1390,20 +1450,45 @@ function defaultCenterProfile() {
     defaultCamera: "cam_front_01",
     defaultFocus: "guard_and_strikes",
     defaultSessionMinutes: 3,
+    defaultSessionSeconds: 0,
+    defaultSessionDurationSeconds: 180,
     monthlyMembershipPrice: 120000,
   };
 }
 
 function loadCenterProfile() {
   try {
-    return { ...defaultCenterProfile(), ...JSON.parse(localStorage.getItem(CENTER_KEY) || "{}") };
+    const saved = JSON.parse(localStorage.getItem(CENTER_KEY) || "{}");
+    return normalizeCenterProfile({ ...defaultCenterProfile(), ...saved }, saved);
   } catch {
     return defaultCenterProfile();
   }
 }
 
 function saveCenterProfile() {
+  state.center = normalizeCenterProfile(state.center);
   localStorage.setItem(CENTER_KEY, JSON.stringify(state.center));
+}
+
+function normalizeCenterProfile(profile, saved = profile) {
+  const minutes = Math.max(0, Math.floor(Number(profile.defaultSessionMinutes || 0)));
+  const seconds = Math.max(0, Math.min(59, Math.floor(Number(profile.defaultSessionSeconds || 0))));
+  const savedDuration = Object.prototype.hasOwnProperty.call(saved, "defaultSessionDurationSeconds")
+    ? Math.max(0, Math.round(Number(saved.defaultSessionDurationSeconds || 0)))
+    : 0;
+  const duration = savedDuration || minutes * 60 + seconds || 180;
+  return {
+    ...profile,
+    defaultSessionMinutes: Math.floor(duration / 60),
+    defaultSessionSeconds: duration % 60,
+    defaultSessionDurationSeconds: duration,
+  };
+}
+
+function sessionDurationSecondsFromCenter() {
+  const minutes = Math.max(0, Math.floor(Number(state.center.defaultSessionMinutes || 0)));
+  const seconds = Math.max(0, Math.min(59, Math.floor(Number(state.center.defaultSessionSeconds || 0))));
+  return Math.max(1, minutes * 60 + seconds);
 }
 
 function renderCenterInfo() {
@@ -1476,7 +1561,7 @@ function renderCenterInfo() {
           <div class="center-form-grid compact">
             ${centerInput("defaultCamera", "기본 카메라", center.defaultCamera)}
             ${centerSelect("defaultFocus", "기본 코칭 초점", center.defaultFocus, coachingFocusOptions())}
-            ${centerInput("defaultSessionMinutes", "기본 라운드 시간(분)", center.defaultSessionMinutes, "number")}
+            ${centerRoundDurationFields(center)}
           </div>
         </article>
 
@@ -1517,7 +1602,13 @@ function renderCenterInfo() {
     </section>`;
   document.querySelectorAll("[data-center-field]").forEach((input) => {
     const updateCenterField = () => {
-      state.center[input.dataset.centerField] = input.type === "number" ? Number(input.value || 0) : input.value;
+      const key = input.dataset.centerField;
+      state.center[key] = input.type === "number" ? Number(input.value || 0) : input.value;
+      if (key === "defaultSessionMinutes" || key === "defaultSessionSeconds") {
+        state.center.defaultSessionMinutes = Math.max(0, Math.floor(Number(state.center.defaultSessionMinutes || 0)));
+        state.center.defaultSessionSeconds = Math.max(0, Math.min(59, Math.floor(Number(state.center.defaultSessionSeconds || 0))));
+        state.center.defaultSessionDurationSeconds = sessionDurationSecondsFromCenter();
+      }
     };
     input.addEventListener("input", updateCenterField);
     input.addEventListener("change", updateCenterField);
@@ -1537,6 +1628,16 @@ function renderCenterInfo() {
 
 function centerInput(key, label, value, type = "text") {
   return `<label class="center-field"><span>${label}</span><input data-center-field="${key}" type="${type}" value="${escapeHtml(value)}" /></label>`;
+}
+
+function centerRoundDurationFields(center) {
+  return `<div class="center-field round-duration-field">
+    <span>기본 라운드 시간</span>
+    <div class="round-duration-inputs">
+      <label><input data-center-field="defaultSessionMinutes" type="number" min="0" max="99" value="${escapeHtml(center.defaultSessionMinutes)}" /><small>분</small></label>
+      <label><input data-center-field="defaultSessionSeconds" type="number" min="0" max="59" value="${escapeHtml(center.defaultSessionSeconds)}" /><small>초</small></label>
+    </div>
+  </div>`;
 }
 
 function centerSelect(key, label, value, options) {
@@ -1917,11 +2018,434 @@ function dayOfWeekClass(year, month, day) {
   return "";
 }
 
+function emptyActionCounts() {
+  return Object.fromEntries(ACTION_TYPES.map(([key]) => [key, 0]));
+}
+
+function emptyActionFeedback() {
+  return Object.fromEntries(ACTION_TYPES.map(([key]) => [key, []]));
+}
+
+function startFeedbackSession() {
+  state.feedbackWindow = newFeedbackWindow();
+  state.sessionFeedback = {
+    startedAt: Date.now(),
+    windows: [],
+    actionCounts: emptyActionCounts(),
+    actionFeedback: emptyActionFeedback(),
+    lastActionAt: {},
+    recentActions: [],
+  };
+  state.lastMotionSample = null;
+}
+
+function clearFeedbackSession() {
+  state.feedbackWindow = null;
+  state.sessionFeedback = null;
+  state.lastMotionSample = null;
+  state.motionHistory = [];
+}
+
+function newFeedbackWindow() {
+  return {
+    startedAt: Date.now(),
+    packets: [],
+    events: [],
+    feedbackTexts: [],
+  };
+}
+
+function ingestPoseFeedback(packet) {
+  if (!state.sessionFeedback) return;
+  if (!state.feedbackWindow) state.feedbackWindow = newFeedbackWindow();
+  const events = detectMotionEvents(packet);
+  state.feedbackWindow.packets.push(packet);
+  state.feedbackWindow.events.push(...events);
+  (packet.feedback_log || fallbackFeedbackLog(packet)).forEach((item) => {
+    if (item.text) state.feedbackWindow.feedbackTexts.push(item.text);
+  });
+  events.forEach((event) => recordMotionEvent(event, packet));
+  if (Date.now() - state.feedbackWindow.startedAt >= FEEDBACK_WINDOW_MS) flushFeedbackWindow();
+}
+
+function recordMotionEvent(event, packet) {
+  const session = state.sessionFeedback;
+  if (!session) return;
+  session.actionCounts[event.type] = (session.actionCounts[event.type] || 0) + 1;
+  session.recentActions.push({ ...event, at: packet.timestamp });
+  session.recentActions = session.recentActions.filter((item) => packet.timestamp - item.at <= 2);
+  const feedback = actionFeedbackText(event.type, packet.metrics);
+  const bucket = session.actionFeedback[event.type] || [];
+  if (!bucket.includes(feedback)) bucket.push(feedback);
+  session.actionFeedback[event.type] = bucket.slice(0, 3);
+  if (
+    event.type === "right"
+    && session.recentActions.some((item) => item.type === "jab" && event.at - item.at > 0 && event.at - item.at <= 1.2)
+    && canRecordMotion("oneTwo", event.at)
+  ) {
+    recordMotionEvent({ type: "oneTwo", at: event.at }, packet);
+  }
+}
+
+function flushFeedbackWindow(force = false) {
+  const windowData = state.feedbackWindow;
+  if (!windowData || (!force && Date.now() - windowData.startedAt < FEEDBACK_WINDOW_MS)) return;
+  if (!windowData.packets.length) {
+    state.feedbackWindow = newFeedbackWindow();
+    return;
+  }
+  const summary = summarizeFeedbackWindow(windowData);
+  state.sessionFeedback?.windows.push(summary);
+  $("#feedbackText").textContent = summary.text;
+  renderFeedbackLog(summary.logs);
+  speakFeedback(summary.text);
+  state.feedbackWindow = newFeedbackWindow();
+}
+
+function summarizeFeedbackWindow(windowData) {
+  const packets = windowData.packets;
+  const averaged = averageMetrics(packets.map((packet) => packet.metrics));
+  const score = Math.round(packets.reduce((total, packet) => total + Number(packet.score || 0), 0) / packets.length);
+  const eventCounts = countEvents(windowData.events);
+  const topEvent = Object.entries(eventCounts).sort((a, b) => b[1] - a[1])[0];
+  const focusText = weakestFeedbackText(averaged);
+  const actionText = topEvent ? `${actionLabel(topEvent[0])} ${topEvent[1]}회. ` : "";
+  const text = `${actionText}${focusText}`;
+  return {
+    startedAt: windowData.startedAt,
+    endedAt: Date.now(),
+    score,
+    metrics: averaged,
+    actionCounts: eventCounts,
+    text,
+    logs: [
+      { text },
+      { text: `가드 ${averaged.guard} · 펀치 회수 ${averaged.punch} · 자세 ${averaged.posture}` },
+    ],
+  };
+}
+
+function countEvents(events) {
+  const counts = {};
+  events.forEach((event) => {
+    counts[event.type] = (counts[event.type] || 0) + 1;
+  });
+  return counts;
+}
+
+function averageMetrics(metricsItems) {
+  const keys = ["guard", "punch", "posture", "left_guard", "right_guard", "extension"];
+  const totals = Object.fromEntries(keys.map((key) => [key, 0]));
+  metricsItems.forEach((metrics) => {
+    keys.forEach((key) => {
+      totals[key] += Number(metrics?.[key] || 0);
+    });
+  });
+  const count = Math.max(1, metricsItems.length);
+  return Object.fromEntries(keys.map((key) => [key, Math.round(totals[key] / count)]));
+}
+
+function weakestFeedbackText(metrics) {
+  const candidates = [
+    [metrics.guard, guardFeedback(metrics.left_guard, metrics.right_guard)],
+    [metrics.punch, punchFeedback(metrics.extension, metrics.guard)],
+    [metrics.posture, postureFeedback(metrics.posture)],
+  ].sort((a, b) => a[0] - b[0]);
+  return candidates[0][1];
+}
+
+function actionLabel(type) {
+  return ACTION_TYPES.find(([key]) => key === type)?.[1] || type;
+}
+
+function actionFeedbackText(type, metrics) {
+  const guard = guardFeedback(metrics.left_guard, metrics.right_guard);
+  const punch = punchFeedback(metrics.extension, metrics.guard);
+  const posture = postureFeedback(metrics.posture);
+  const feedback = {
+    jab: `잽 후 앞손 복귀를 확인하세요. ${guard}`,
+    right: `라이트 후 반대손 가드를 유지하세요. ${guard}`,
+    oneTwo: `원투 리듬은 좋습니다. 두 번째 펀치 뒤 회수를 빠르게 가져가세요.`,
+    hook: `훅은 팔만 돌리지 말고 어깨와 골반 회전을 같이 쓰세요. ${posture}`,
+    upper: `어퍼는 중심이 뜨지 않게 무릎 반동을 짧게 쓰세요. ${posture}`,
+    duck: `더킹 뒤 시선과 가드를 바로 복구하세요. ${guard}`,
+    weave: `위빙은 상체만 크게 흔들기보다 무릎으로 낮게 지나가세요. ${posture}`,
+  };
+  return feedback[type] || punch;
+}
+
+function englishActionFeedbackText(type) {
+  const feedback = {
+    jab: "Bring your lead hand back to guard right after the jab.",
+    right: "Keep the opposite hand high after the right hand.",
+    oneTwo: "Good one-two rhythm. Recover quickly after the second punch.",
+    hook: "Turn the shoulder and hips together. Do not swing with the arm only.",
+    upper: "Stay grounded and use a short knee drive on the uppercut.",
+    duck: "Recover your eyes and guard immediately after the duck.",
+    weave: "Use your knees and move under the line instead of only leaning your upper body.",
+  };
+  return feedback[type] || "Keep your guard high and recover the punch quickly.";
+}
+
+function localizedFeedbackText(text) {
+  if (voiceLanguage() !== "en-US") return text;
+  const currentWindow = state.sessionFeedback?.windows?.at(-1);
+  const topEvent = currentWindow
+    ? Object.entries(currentWindow.actionCounts || {}).sort((a, b) => b[1] - a[1])[0]
+    : null;
+  if (topEvent?.[0]) return englishActionFeedbackText(topEvent[0]);
+  return "Keep your guard high and recover your punches quickly.";
+}
+
+function detectMotionEvents(packet) {
+  const points = Object.fromEntries((packet.keypoints || []).map((point) => [point.name, point]));
+  const rawSample = motionSample(points, packet.timestamp);
+  const current = smoothedMotionSample(rawSample);
+  const previous = state.lastMotionSample;
+  state.lastMotionSample = current;
+  if (!previous || packet.status === "no_person" || !current.trackable) return [];
+  const events = [];
+  const addEvent = (type) => {
+    const at = Date.now();
+    if (canRecordMotion(type, at)) events.push({ type, at: packet.timestamp });
+  };
+  if (detectStraightPunch(current, previous, "left")) addEvent("jab");
+  if (detectStraightPunch(current, previous, "right")) addEvent("right");
+  if (detectHook(current, previous)) addEvent("hook");
+  if (detectUppercut(current, previous)) addEvent("upper");
+  if (detectDuck(current, previous)) addEvent("duck");
+  if (detectWeave(current, previous)) addEvent("weave");
+  return events;
+}
+
+function canRecordMotion(type, at) {
+  const lastAt = state.sessionFeedback?.lastActionAt[type] || 0;
+  if (at - lastAt < MOTION_EVENT_COOLDOWN_MS) return false;
+  state.sessionFeedback.lastActionAt[type] = at;
+  return true;
+}
+
+function motionSample(points, timestamp) {
+  const leftShoulder = points.left_shoulder || {};
+  const rightShoulder = points.right_shoulder || {};
+  const leftWrist = points.left_wrist || {};
+  const rightWrist = points.right_wrist || {};
+  const leftElbow = points.left_elbow || {};
+  const rightElbow = points.right_elbow || {};
+  const nose = points.nose || {};
+  const shoulderSpan = Math.max(Math.abs((rightShoulder.x || 0) - (leftShoulder.x || 0)), 0.1);
+  const leftExtension = punchExtension(leftWrist, leftShoulder, shoulderSpan);
+  const rightExtension = punchExtension(rightWrist, rightShoulder, shoulderSpan);
+  const leftReliability = averageVisibility([leftShoulder, leftElbow, leftWrist]);
+  const rightReliability = averageVisibility([rightShoulder, rightElbow, rightWrist]);
+  const bodyReliability = averageVisibility([nose, leftShoulder, rightShoulder]);
+  return {
+    timestamp,
+    leftExtension,
+    rightExtension,
+    extension: Math.max(leftExtension, rightExtension),
+    leftX: leftWrist.x || 0,
+    rightX: rightWrist.x || 0,
+    leftY: leftWrist.y || 0,
+    rightY: rightWrist.y || 0,
+    noseY: points.nose?.y || 0,
+    shoulderY: ((leftShoulder.y || 0) + (rightShoulder.y || 0)) / 2,
+    shoulderCenterX: ((leftShoulder.x || 0) + (rightShoulder.x || 0)) / 2,
+    leftReliability,
+    rightReliability,
+    bodyReliability,
+    trackable: bodyReliability >= 0.42 && (leftReliability >= 0.36 || rightReliability >= 0.36),
+  };
+}
+
+function averageVisibility(points) {
+  const scores = points.map((point) => Number(point.score || 0)).filter((score) => score > 0);
+  return scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : 0;
+}
+
+function smoothedMotionSample(sample) {
+  state.motionHistory.push(sample);
+  state.motionHistory = state.motionHistory.filter((item) => sample.timestamp - item.timestamp <= 0.45).slice(-8);
+  const keys = [
+    "leftExtension", "rightExtension", "extension", "leftX", "rightX", "leftY", "rightY",
+    "noseY", "shoulderY", "shoulderCenterX", "leftReliability", "rightReliability", "bodyReliability",
+  ];
+  const smoothed = { ...sample };
+  keys.forEach((key) => {
+    smoothed[key] = state.motionHistory.reduce((sum, item) => sum + Number(item[key] || 0), 0) / state.motionHistory.length;
+  });
+  smoothed.trackable = sample.trackable;
+  return smoothed;
+}
+
+function detectStraightPunch(current, previous, side) {
+  const prefix = side === "left" ? "left" : "right";
+  const reliability = current[`${prefix}Reliability`];
+  const extension = current[`${prefix}Extension`];
+  const previousExtension = previous[`${prefix}Extension`];
+  const wristY = current[`${prefix}Y`];
+  return reliability >= 0.42
+    && extension >= 68
+    && extension - previousExtension >= 10
+    && Math.abs(wristY - current.shoulderY) <= 0.22;
+}
+
+function detectHook(current, previous) {
+  const leftSwing = current.leftReliability >= 0.42
+    && Math.abs(current.leftX - previous.leftX) >= 0.034
+    && current.leftExtension >= 38
+    && current.leftExtension <= 78;
+  const rightSwing = current.rightReliability >= 0.42
+    && Math.abs(current.rightX - previous.rightX) >= 0.034
+    && current.rightExtension >= 38
+    && current.rightExtension <= 78;
+  return leftSwing || rightSwing;
+}
+
+function detectUppercut(current, previous) {
+  const leftRise = current.leftReliability >= 0.42
+    && previous.leftY - current.leftY >= 0.028
+    && current.leftExtension >= 34
+    && current.leftExtension <= 76;
+  const rightRise = current.rightReliability >= 0.42
+    && previous.rightY - current.rightY >= 0.028
+    && current.rightExtension >= 34
+    && current.rightExtension <= 76;
+  return leftRise || rightRise;
+}
+
+function detectDuck(current, previous) {
+  return current.bodyReliability >= 0.5
+    && current.noseY - previous.noseY >= 0.035
+    && Math.abs(current.shoulderCenterX - previous.shoulderCenterX) <= 0.035;
+}
+
+function detectWeave(current, previous) {
+  return current.bodyReliability >= 0.5
+    && current.noseY > current.shoulderY - 0.05
+    && Math.abs(current.shoulderCenterX - previous.shoulderCenterX) >= 0.035;
+}
+
+function buildSessionFeedbackReport(sessionId, score) {
+  const session = state.sessionFeedback || {
+    startedAt: Date.now(),
+    windows: [],
+    actionCounts: emptyActionCounts(),
+    actionFeedback: emptyActionFeedback(),
+  };
+  const counts = { ...emptyActionCounts(), ...session.actionCounts };
+  const feedback = { ...emptyActionFeedback(), ...session.actionFeedback };
+  return {
+    sessionId,
+    createdAt: new Date().toISOString(),
+    score,
+    durationSeconds: Math.max(0, Math.round((Date.now() - session.startedAt) / 1000)),
+    actionCounts: counts,
+    actionFeedback: feedback,
+    windows: session.windows || [],
+    summary: buildSessionSummaryText(counts, feedback),
+    summary_en: buildEnglishSessionSummaryText(counts, feedback),
+  };
+}
+
+function buildSessionSummaryText(counts, feedback) {
+  const total = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+  const top = ACTION_TYPES
+    .map(([key, label]) => ({ key, label, count: counts[key] || 0 }))
+    .sort((a, b) => b.count - a.count)[0];
+  const main = top && top.count ? `${top.label}이 가장 많이 감지되었습니다(${top.count}회).` : "감지된 주요 동작이 아직 없습니다.";
+  const firstFeedback = ACTION_TYPES.map(([key]) => feedback[key]?.[0]).find(Boolean) || "다음 라운드에서는 가드 유지와 펀치 회수를 우선 확인하세요.";
+  return `총 ${total}회 동작 감지. ${main} ${firstFeedback}`;
+}
+
+function buildEnglishSessionSummaryText(counts, feedback) {
+  const total = Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0);
+  const top = ACTION_TYPES
+    .map(([key, label]) => ({ key, label, count: counts[key] || 0 }))
+    .sort((a, b) => b.count - a.count)[0];
+  const main = top && top.count
+    ? `${top.label} was detected most often, ${top.count} times.`
+    : "No clear main action was detected yet.";
+  const firstKey = ACTION_TYPES.map(([key]) => feedback[key]?.length ? key : "").find(Boolean);
+  const firstFeedback = firstKey ? englishActionFeedbackText(firstKey) : "Focus on keeping your guard high and recovering punches quickly.";
+  return `${total} actions detected. ${main} ${firstFeedback}`;
+}
+
+function parseFeedbackReport(session) {
+  if (!session?.feedback_report) return null;
+  try {
+    return JSON.parse(session.feedback_report);
+  } catch {
+    return null;
+  }
+}
+
+function showSessionFeedbackModal(report) {
+  document.querySelector("#sessionFeedbackModal")?.remove();
+  const modal = document.createElement("div");
+  modal.id = "sessionFeedbackModal";
+  modal.className = "modal-backdrop";
+  modal.innerHTML = `
+    <div class="confirm-modal session-feedback-modal">
+      <strong>라운드 피드백</strong>
+      <p>${escapeHtml(report.summary)}</p>
+      ${sessionFeedbackTable(report)}
+      <div class="modal-actions">
+        <button id="downloadLatestFeedbackCsv">피드백 저장</button>
+        <button type="button" class="ghost" id="closeSessionFeedback">닫기</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  $("#downloadLatestFeedbackCsv").addEventListener("click", () => downloadFeedbackCsv(report));
+  $("#closeSessionFeedback").addEventListener("click", () => modal.remove());
+  modal.addEventListener("click", (event) => {
+    if (event.target === modal) modal.remove();
+  });
+  speakText(sessionSummaryForVoice(report));
+}
+
+function sessionSummaryForVoice(report) {
+  return voiceLanguage() === "en-US" ? report.summary_en || report.summary : report.summary;
+}
+
+function sessionFeedbackTable(report) {
+  const rows = ACTION_TYPES.map(([key, label]) => {
+    const items = report.actionFeedback?.[key] || [];
+    const feedback = items.length ? items.join(" / ") : "감지된 동작 피드백 없음";
+    return `<tr><td>${label}</td><td>${report.actionCounts?.[key] || 0}</td><td>${escapeHtml(feedback)}</td></tr>`;
+  }).join("");
+  return `<div class="table-wrap feedback-report-wrap">
+    <table class="admin-table feedback-report-table">
+      <thead><tr><th>동작</th><th>빈도</th><th>피드백</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function downloadFeedbackCsv(report) {
+  const header = ["session_id", "created_at", "action", "count", "feedback"];
+  const rows = ACTION_TYPES.map(([key, label]) => [
+    report.sessionId,
+    report.createdAt,
+    label,
+    report.actionCounts?.[key] || 0,
+    (report.actionFeedback?.[key] || []).join(" / "),
+  ]);
+  const csv = [header, ...rows]
+    .map((row) => row.map((cell) => `"${String(cell ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  downloadBlob(new Blob(["\ufeff", csv], { type: "text/csv;charset=utf-8" }), `${report.sessionId}_feedback.csv`);
+}
+
 async function startSession() {
   if (state.activeSessionId) return;
   resetHud();
+  startFeedbackSession();
   const cameraReady = await prepareSessionCamera();
-  if (!cameraReady) return;
+  if (!cameraReady) {
+    clearFeedbackSession();
+    return;
+  }
   const created = await api("/sessions", {
     method: "POST",
     body: JSON.stringify({ focus: state.center.defaultFocus || "guard_and_strikes" }),
@@ -1931,6 +2455,7 @@ async function startSession() {
   state.sessions.unshift(created.session);
   startRecording();
   startSessionTimer();
+  startRoundTimer();
   updateSessionControls();
   playTone(660);
   await startPoseTracking(created.session.id);
@@ -1954,14 +2479,17 @@ async function stopSession() {
   if (!state.activeSessionId) return;
   const sessionId = state.activeSessionId;
   const score = Number($("#scoreValue").textContent) || 0;
+  flushFeedbackWindow(true);
+  const feedbackReport = buildSessionFeedbackReport(sessionId, score);
   state.activeSessionId = "";
   stopSessionTimer();
+  stopRoundTimer();
   const recording = await stopRecording(sessionId);
   stopPoseTracking();
   stopCamera();
   const result = await api(`/sessions/${sessionId}/end`, {
     method: "PATCH",
-    body: JSON.stringify({ overall_score: score }),
+    body: JSON.stringify({ overall_score: score, feedback_report: JSON.stringify(feedbackReport) }),
   });
   state.sessions = state.sessions.map((session) => (session.id === sessionId ? result.session : session));
   if (recording) {
@@ -1969,6 +2497,8 @@ async function stopSession() {
   }
   playTone(420);
   notifyUser("운동 세션 종료", `점수 ${score}점으로 세션이 저장되었습니다.`);
+  showSessionFeedbackModal(feedbackReport);
+  clearFeedbackSession();
   updateSessionControls();
   resetHud();
 }
@@ -2004,6 +2534,7 @@ function createPoseLandmarker(PoseLandmarker, vision, delegate) {
 async function startPoseTracking(sessionId) {
   state.poseRunning = true;
   state.lastVideoTime = -1;
+  state.poseTimestampMs = 0;
   state.poseErrorShown = false;
   $("#cameraStatus").textContent = "MediaPipe 모션 인식 중";
   const video = $("#cameraPreview");
@@ -2020,25 +2551,44 @@ function stopPoseTracking() {
   if (state.poseLoop) cancelAnimationFrame(state.poseLoop);
   state.poseLoop = null;
   state.lastVideoTime = -1;
+  if (state.poseLandmarker) resetPoseLandmarker();
 }
 
 function updatePoseFromVideo(video, sessionId) {
   if (!state.poseLandmarker || video.readyState < 2 || video.currentTime === state.lastVideoTime) return;
   state.lastVideoTime = video.currentTime;
   try {
-    const result = state.poseLandmarker.detectForVideo(video, Math.round(video.currentTime * 1000));
+    const result = state.poseLandmarker.detectForVideo(video, nextPoseTimestampMs());
     const landmarks = result.landmarks && result.landmarks[0];
     const packet = packetFromLandmarks(sessionId, landmarks || []);
     state.latestPose = packet;
     updateHud(packet);
     drawSkeleton();
   } catch (error) {
+    if (String(error.message || error).includes("timestamp mismatch")) {
+      resetPoseLandmarker();
+    }
     if (state.poseErrorShown) return;
     state.poseErrorShown = true;
     $("#cameraStatus").textContent = "MediaPipe 추론 오류";
-    $("#feedbackText").textContent = `모션 인식이 시작되지 못했습니다. 새로고침 후 다시 시도해주세요. ${error.message}`;
+    $("#feedbackText").textContent = `모션 인식이 일시 중지되었습니다. 세션을 종료한 뒤 다시 시작해주세요. ${error.message}`;
     console.error(error);
   }
+}
+
+function nextPoseTimestampMs() {
+  state.poseTimestampMs += 33;
+  return state.poseTimestampMs;
+}
+
+function resetPoseLandmarker() {
+  try {
+    state.poseLandmarker?.close?.();
+  } catch (error) {
+    console.warn("MediaPipe close failed.", error);
+  }
+  state.poseLandmarker = null;
+  state.poseTimestampMs = 0;
 }
 
 async function startCamera() {
@@ -2153,6 +2703,7 @@ function drawRecordingFrame(canvas) {
   gradient.addColorStop(1, "#06101a");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, width, height);
+  drawRecordingCamera(ctx, 0, 0, width, height, true);
   drawRecordingGrid(ctx, width, height);
   drawRecordingSkeleton(ctx, width, height);
   drawRecordingOverlay(ctx, width, height);
@@ -2186,12 +2737,39 @@ function drawCoverImage(ctx, source, x, y, width, height) {
   ctx.drawImage(source, x + (width - scaledWidth) / 2, y + (height - scaledHeight) / 2, scaledWidth, scaledHeight);
 }
 
+function poseRenderRect(width, height) {
+  const video = $("#cameraPreview");
+  const sourceWidth = video.videoWidth || width;
+  const sourceHeight = video.videoHeight || height;
+  const scale = Math.max(width / sourceWidth, height / sourceHeight);
+  const renderedWidth = sourceWidth * scale;
+  const renderedHeight = sourceHeight * scale;
+  return {
+    x: (width - renderedWidth) / 2,
+    y: (height - renderedHeight) / 2,
+    width: renderedWidth,
+    height: renderedHeight,
+  };
+}
+
+function posePointToCanvas(point, width, height) {
+  const rect = poseRenderRect(width, height);
+  return {
+    x: rect.x + (1 - point.x) * rect.width,
+    y: rect.y + point.y * rect.height,
+  };
+}
+
+function posePointsForCanvas(packet, width, height) {
+  return Object.fromEntries(packet.keypoints.map((point) => [
+    point.name,
+    posePointToCanvas(point, width, height),
+  ]));
+}
+
 function drawRecordingSkeleton(ctx, width, height) {
   if (!state.latestPose) return;
-  const points = Object.fromEntries(state.latestPose.keypoints.map((point) => [
-    point.name,
-    { x: point.x * width, y: point.y * height },
-  ]));
+  const points = posePointsForCanvas(state.latestPose, width, height);
   const bones = [
     ["nose", "left_shoulder"], ["nose", "right_shoulder"],
     ["left_shoulder", "left_elbow"], ["left_elbow", "left_wrist"],
@@ -2231,7 +2809,6 @@ function drawRecordingOverlay(ctx, width, height) {
   drawRecordingCard(ctx, 42, 42, 330, 128, "수행 동작", action, status);
   drawRecordingCard(ctx, width - 232, 42, 190, 154, "점수", score, confidence, true);
   drawRecordingFeedbackCard(ctx, 42, height - 200, 580, 158, feedback);
-  drawRecordingCamera(ctx, width - 342, height - 232, 300, 190);
 }
 
 function drawRecordingCard(ctx, x, y, width, height, label, value, note, isScore = false) {
@@ -2284,23 +2861,27 @@ function drawRecordingFeedbackCard(ctx, x, y, width, height, fallbackText) {
   ctx.restore();
 }
 
-function drawRecordingCamera(ctx, x, y, width, height) {
+function drawRecordingCamera(ctx, x, y, width, height, fullBleed = false) {
   const video = $("#cameraPreview");
   ctx.save();
-  roundRect(ctx, x, y, width, height, 8);
-  ctx.fillStyle = "rgba(3, 18, 28, 0.72)";
-  ctx.fill();
-  ctx.strokeStyle = "rgba(99, 234, 255, 0.36)";
-  ctx.stroke();
-  ctx.clip();
+  if (!fullBleed) {
+    roundRect(ctx, x, y, width, height, 8);
+    ctx.fillStyle = "rgba(3, 18, 28, 0.72)";
+    ctx.fill();
+    ctx.strokeStyle = "rgba(99, 234, 255, 0.36)";
+    ctx.stroke();
+    ctx.clip();
+  }
   if (video.readyState >= 2) {
-    drawCoverImage(ctx, video, x, y, width, height);
+    ctx.translate(x + width, y);
+    ctx.scale(-1, 1);
+    drawCoverImage(ctx, video, 0, 0, width, height);
   } else {
     ctx.fillStyle = "rgba(46, 232, 255, 0.10)";
     ctx.fillRect(x, y, width, height);
     ctx.fillStyle = "rgba(198, 243, 255, 0.78)";
     ctx.font = "18px Arial";
-    ctx.fillText("LIVE CAMERA", x + 84, y + height / 2);
+    if (!fullBleed) ctx.fillText("LIVE CAMERA", x + 84, y + height / 2);
   }
   ctx.restore();
 }
@@ -2471,8 +3052,12 @@ function downloadBlob(blob, filename) {
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function deleteSelectedMemberRecords() {
@@ -2500,13 +3085,39 @@ function stopSessionTimer() {
   state.sessionTimer = null;
 }
 
+function startRoundTimer() {
+  stopRoundTimer();
+  const durationSeconds = sessionDurationSecondsFromCenter();
+  state.roundTimer = setTimeout(() => {
+    if (state.activeSessionId) stopSession();
+  }, durationSeconds * 1000);
+}
+
+function stopRoundTimer() {
+  if (state.roundTimer) clearTimeout(state.roundTimer);
+  state.roundTimer = null;
+}
+
 function updateSessionControls() {
   const isActive = Boolean(state.activeSessionId);
   $("#sessionState").textContent = isActive ? "녹화 중" : "대기 중";
-  $("#sessionTimer").textContent = isActive ? elapsedText(state.activeSessionStartedAt, Date.now() / 1000) : "00:00";
+  $("#sessionTimer").textContent = isActive ? sessionTimerText() : "00:00";
   $("#startSessionHud").disabled = isActive;
   $("#stopSessionHud").disabled = !isActive;
   $("#startSession").disabled = isActive;
+}
+
+function sessionTimerText() {
+  const elapsedSeconds = Math.max(0, Math.floor(Date.now() / 1000 - state.activeSessionStartedAt));
+  const durationSeconds = sessionDurationSecondsFromCenter();
+  return `${formatSeconds(elapsedSeconds)} / ${formatSeconds(durationSeconds)}`;
+}
+
+function formatSeconds(totalSeconds) {
+  const total = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+  const minutes = String(Math.floor(total / 60)).padStart(2, "0");
+  const seconds = String(total % 60).padStart(2, "0");
+  return `${minutes}:${seconds}`;
 }
 
 const poseIndexes = {
@@ -2650,9 +3261,7 @@ function updateHud(packet) {
   $("#scoreValue").textContent = packet.score;
   $("#confidenceValue").textContent = `confidence ${packet.confidence}`;
   $("#cameraStatus").textContent = `${packet.camera_id} · ${packet.view_angle} · ${packet.status}`;
-  $("#feedbackText").textContent = packet.feedback;
-  renderFeedbackLog(packet.feedback_log || fallbackFeedbackLog(packet));
-  speakFeedback(packet.feedback);
+  ingestPoseFeedback(packet);
 }
 
 function renderFeedbackLog(items) {
@@ -2691,7 +3300,7 @@ function drawSkeleton() {
     return;
   }
   const packet = state.latestPose;
-  const points = Object.fromEntries(packet.keypoints.map((p) => [p.name, { x: p.x * w, y: p.y * h }]));
+  const points = posePointsForCanvas(packet, w, h);
   const bones = [
     ["nose", "left_shoulder"], ["nose", "right_shoulder"],
     ["left_shoulder", "left_elbow"], ["left_elbow", "left_wrist"],

@@ -66,6 +66,8 @@
         </section>
 
         <section id="hud" class="hud hidden">
+          <video id="cameraPreview" class="hud-camera" autoplay muted playsinline></video>
+          <div class="camera-fallback hud-camera" id="cameraFallback">LIVE CAMERA</div>
           <canvas id="skeletonCanvas"></canvas>
           <div id="cameraOffline" class="camera-offline">
             <strong>카메라 연결 안됨</strong>
@@ -94,11 +96,6 @@
             <span>AI 피드백</span>
             <p id="feedbackText">실시간 세션을 시작하면 포즈 분석 이벤트가 표시됩니다.</p>
             <div id="feedbackLog" class="feedback-log"></div>
-          </article>
-
-          <article class="overlay camera-card">
-            <video id="cameraPreview" autoplay muted playsinline></video>
-            <div class="camera-fallback" id="cameraFallback">LIVE CAMERA</div>
           </article>
 
           <article class="overlay session-card">

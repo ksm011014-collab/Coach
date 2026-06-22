@@ -61,6 +61,7 @@ class TrainingSession:
     camera_config: list[dict[str, Any]]
     overall_score: int
     focus: str
+    feedback_report: str = ""
 
 
 @dataclasses.dataclass
@@ -155,6 +156,7 @@ class Store:
                     camera_config text not null,
                     overall_score integer not null,
                     focus text not null,
+                    feedback_report text not null default '',
                     foreign key (user_id) references users(id),
                     foreign key (gym_id) references gyms(id)
                 );
@@ -183,6 +185,7 @@ class Store:
             self.ensure_column("member_profiles", "reach_cm", "integer not null default 172")
             self.ensure_column("member_profiles", "stance", "text not null default 'orthodox'")
             self.ensure_column("member_profiles", "injury_note", "text not null default ''")
+            self.ensure_column("training_sessions", "feedback_report", "text not null default ''")
             self.backfill_usernames()
             self.backfill_gym_codes()
             self.conn.execute("create unique index if not exists idx_users_username on users(username)")
@@ -396,8 +399,8 @@ class Store:
             self.conn.execute(
                 """
                 insert into training_sessions
-                (id, user_id, gym_id, started_at, ended_at, camera_config, overall_score, focus)
-                values (?, ?, ?, ?, ?, ?, ?, ?)
+                (id, user_id, gym_id, started_at, ended_at, camera_config, overall_score, focus, feedback_report)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session.id,
@@ -408,6 +411,7 @@ class Store:
                     json.dumps(session.camera_config, ensure_ascii=False),
                     session.overall_score,
                     session.focus,
+                    session.feedback_report,
                 ),
             )
         return session
@@ -416,15 +420,21 @@ class Store:
         row = self.conn.execute("select * from training_sessions where id = ?", (session_id,)).fetchone()
         return session_from_row(row) if row else None
 
-    def end_session(self, session_id: str, ended_at: float, overall_score: int) -> TrainingSession | None:
+    def end_session(
+        self,
+        session_id: str,
+        ended_at: float,
+        overall_score: int,
+        feedback_report: str = "",
+    ) -> TrainingSession | None:
         with self.lock, self.conn:
             self.conn.execute(
                 """
                 update training_sessions
-                set ended_at = ?, overall_score = ?
+                set ended_at = ?, overall_score = ?, feedback_report = ?
                 where id = ?
                 """,
-                (ended_at, overall_score, session_id),
+                (ended_at, overall_score, feedback_report, session_id),
             )
         return self.get_session(session_id)
 
@@ -517,6 +527,7 @@ def profile_from_row(row: sqlite3.Row) -> MemberProfile:
 def session_from_row(row: sqlite3.Row) -> TrainingSession:
     values = dict(row)
     values["camera_config"] = json.loads(values["camera_config"])
+    values.setdefault("feedback_report", "")
     return TrainingSession(**values)
 
 

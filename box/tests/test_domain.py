@@ -62,10 +62,16 @@ class AuthorizationTests(unittest.TestCase):
             focus="guard_and_strikes",
         )
         self.store.create_session(session)
-        updated = self.store.end_session(session.id, ended_at=70, overall_score=86)
+        updated = self.store.end_session(
+            session.id,
+            ended_at=70,
+            overall_score=86,
+            feedback_report='{"summary":"good round"}',
+        )
 
         self.assertEqual(updated.ended_at, 70)
         self.assertEqual(updated.overall_score, 86)
+        self.assertEqual(updated.feedback_report, '{"summary":"good round"}')
 
     def test_delete_session_removes_record(self):
         session = TrainingSession(

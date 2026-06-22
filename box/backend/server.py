@@ -6,6 +6,7 @@ import os
 import shutil
 import socketserver
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -48,8 +49,12 @@ except ModuleNotFoundError:
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if getattr(sys, "frozen", False):
+    ROOT = Path(sys.executable).resolve().parent
 WEB_ROOT = ROOT / "web"
-STORE = Store(ROOT / "backend" / "boxing_coach.db")
+DATA_ROOT = ROOT / "backend"
+DATA_ROOT.mkdir(exist_ok=True)
+STORE = Store(DATA_ROOT / "boxing_coach.db")
 
 
 class ApiHandler(SimpleHTTPRequestHandler):
@@ -267,6 +272,7 @@ class ApiHandler(SimpleHTTPRequestHandler):
             or [{"camera_id": "cam_front_01", "view_angle": "front", "enabled": True}],
             overall_score=0,
             focus=str(body.get("focus") or "guard_and_strikes"),
+            feedback_report="",
         )
         STORE.create_session(session)
         self.respond({"session": serialize(session)}, HTTPStatus.CREATED)
@@ -294,7 +300,8 @@ class ApiHandler(SimpleHTTPRequestHandler):
         if not can_read_session(user, session):
             raise PermissionError("session is outside your access scope")
         score = int(body.get("overall_score") or session.overall_score or 0)
-        updated = STORE.end_session(session_id, time.time(), max(0, min(100, score)))
+        feedback_report = str(body.get("feedback_report") or session.feedback_report or "")
+        updated = STORE.end_session(session_id, time.time(), max(0, min(100, score)), feedback_report)
         self.respond({"session": serialize(updated)})
 
     def delete_session(self, session_id: str) -> None:
@@ -328,7 +335,7 @@ class ApiHandler(SimpleHTTPRequestHandler):
 
     def convert_recording(self) -> None:
         self.require_user()
-        ffmpeg = shutil.which("ffmpeg")
+        ffmpeg = ffmpeg_executable()
         if ffmpeg is None:
             raise ValueError("MP4 conversion requires FFmpeg installed on this computer")
         size = int(self.headers.get("Content-Length") or 0)
@@ -411,6 +418,18 @@ def public_user(user: Any) -> dict[str, Any]:
         "role": user.role,
         "name": user.name,
     }
+
+
+def ffmpeg_executable() -> str | None:
+    ffmpeg = shutil.which("ffmpeg")
+    if ffmpeg:
+        return ffmpeg
+    try:
+        import imageio_ffmpeg
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        return None
 
 
 class ThreadedServer(socketserver.ThreadingMixIn, socketserver.TCPServer):

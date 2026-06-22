@@ -431,6 +431,7 @@ h1 {
   align-self: center;
   justify-self: center;
   width: 500px;
+  height: min(620px, calc(100vh - 96px));
   margin-top: 0;
   transform: translateX(-34px);
   background: rgba(3, 14, 23, 0.78);
@@ -551,11 +552,12 @@ input:focus {
 }
 
 .auth-card.signup-mode {
-  padding: 22px 30px 24px;
+  padding: 16px 28px 18px;
+  transform: translateX(-34px);
 }
 
 .auth-card.signup-mode .auth-logo {
-  padding-bottom: 14px;
+  padding-bottom: 10px;
 }
 
 .auth-card.signup-mode .auth-tabs {
@@ -563,20 +565,20 @@ input:focus {
 }
 
 .auth-card.signup-mode .auth-form {
-  gap: 8px;
+  gap: 6px;
 }
 
 .auth-card.signup-mode input,
 .auth-card.signup-mode select,
 .auth-card.signup-mode #checkUsernameButton {
-  min-height: 40px;
-  padding-top: 9px;
-  padding-bottom: 9px;
+  min-height: 34px;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .auth-card.signup-mode #authSubmit {
-  min-height: 46px;
-  margin-top: 8px;
+  min-height: 40px;
+  margin-top: 4px;
 }
 
 .auth-card.signup-mode .auth-links {
@@ -584,8 +586,8 @@ input:focus {
 }
 
 .auth-card.signup-mode .form-message {
-  min-height: 18px;
-  font-size: 13px;
+  min-height: 14px;
+  font-size: 12px;
 }
 
 .remember-row {
@@ -695,21 +697,45 @@ input:focus {
 }
 
 #skeletonCanvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
   width: 100%;
   height: 100%;
   display: block;
+  pointer-events: none;
+}
+
+.hud-camera {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #02070c;
+}
+
+#cameraPreview {
+  transform: scaleX(-1);
+}
+
+#cameraFallback {
+  z-index: 1;
 }
 
 .scanlines {
   pointer-events: none;
   position: absolute;
   inset: 0;
+  z-index: 4;
   background: repeating-linear-gradient(to bottom, rgba(255,255,255,0.03), rgba(255,255,255,0.03) 1px, transparent 1px, transparent 7px);
   mix-blend-mode: screen;
 }
 
 .corner {
   position: absolute;
+  z-index: 5;
   width: 110px;
   height: 110px;
   border-color: rgba(46, 232, 255, 0.72);
@@ -722,6 +748,7 @@ input:focus {
 
 .overlay {
   position: absolute;
+  z-index: 6;
   border: 1px solid var(--line);
   background: rgba(3, 18, 28, 0.68);
   border-radius: 8px;
@@ -766,15 +793,6 @@ input:focus {
   line-height: 1.45;
 }
 
-.camera-card {
-  right: 42px;
-  bottom: 42px;
-  width: 300px;
-  height: 190px;
-  padding: 0;
-  overflow: hidden;
-}
-
 .session-card {
   right: 42px;
   top: 220px;
@@ -808,13 +826,6 @@ input:focus {
 
 .session-actions .danger:not(:disabled) {
   background: rgba(255, 94, 94, 0.14);
-}
-
-video,
-.camera-fallback {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
 
 .camera-fallback {
@@ -1151,6 +1162,23 @@ h2 {
 .center-field {
   display: grid;
   gap: 7px;
+}
+
+.round-duration-inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.round-duration-inputs label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.round-duration-inputs small {
+  color: var(--muted);
 }
 
 .center-field.full {
@@ -1694,6 +1722,25 @@ h2 {
   color: var(--muted);
 }
 
+.session-feedback-modal {
+  width: min(860px, calc(100vw - 36px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+}
+
+.feedback-report-wrap {
+  margin: 14px 0;
+}
+
+.feedback-report-table {
+  min-width: 640px;
+}
+
+.feedback-report-table td:last-child {
+  min-width: 320px;
+  white-space: normal;
+}
+
 .confirm-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -2215,7 +2262,13 @@ h2 {
 
   .auth-card {
     width: calc(100% - 36px);
+    height: auto;
     margin: 22px auto 40px;
+    transform: none;
+  }
+
+  .auth-card.signup-mode {
+    margin-top: 18px;
     transform: none;
   }
 
@@ -2243,7 +2296,6 @@ h2 {
   .target-card,
   .feedback-card,
   .score-card,
-  .camera-card,
   .session-card {
     left: 18px;
     right: 18px;
@@ -2252,10 +2304,6 @@ h2 {
 
   .score-card {
     top: 150px;
-  }
-
-  .camera-card {
-    height: 150px;
   }
 
   .session-card {
