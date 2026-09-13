@@ -3,7 +3,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#050a10" />
+    <meta name="application-name" content="APEX Boxing AI Coach" />
     <title>APEX Boxing AI Coach</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/app-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
@@ -57,8 +61,8 @@
             </div>
 
             <form id="loginForm" class="auth-form">
-              <input name="username" value="owner" placeholder="아이디" autocomplete="username" />
-              <input name="password" value="Owner!123" type="password" placeholder="비밀번호" autocomplete="current-password" />
+              <input name="username" value="" placeholder="아이디" autocomplete="username" />
+              <input name="password" value="" type="password" placeholder="비밀번호" autocomplete="current-password" />
               <button id="authSubmit">로그인</button>
               <p id="authMessage" class="form-message"></p>
             </form>
@@ -69,6 +73,7 @@
           <video id="cameraPreview" class="hud-camera" autoplay muted playsinline></video>
           <div class="camera-fallback hud-camera" id="cameraFallback">LIVE CAMERA</div>
           <canvas id="skeletonCanvas"></canvas>
+          <div id="cameraMiniOverlay" class="camera-mini-overlay hidden" aria-label="Additional camera views"></div>
           <div id="cameraOffline" class="camera-offline">
             <strong>카메라 연결 안됨</strong>
             <span>실시간 코칭을 시작하려면 카메라 권한을 허용하고 장치를 연결하세요.</span>
@@ -120,6 +125,30 @@
         </section>
       </main>
     </div>
+    <aside id="updateBanner" class="update-banner hidden" aria-live="polite">
+      <div>
+        <strong>새 웹 버전을 사용할 수 있습니다.</strong>
+        <span id="updateBannerMessage">운동 중이 아닐 때 안전하게 업데이트할 수 있습니다.</span>
+      </div>
+      <button id="applyWebUpdate" type="button">업데이트</button>
+    </aside>
+    <script src="/scripts/android-offline.js"></script>
+    <script src="/scripts/desktop-bridge.js"></script>
+    <script src="/scripts/config.js"></script>
+    <script src="/scripts/storage.js"></script>
+    <script src="/scripts/utils.js"></script>
+    <script src="/scripts/auth-shell.js"></script>
+    <script src="/scripts/member-home.js"></script>
+    <script src="/scripts/dashboard.js"></script>
+    <script src="/scripts/members.js"></script>
+    <script src="/scripts/accounts.js"></script>
+    <script src="/scripts/platform-admin.js"></script>
+    <script src="/scripts/preferences.js"></script>
+    <script src="/scripts/business.js"></script>
+    <script src="/scripts/attendance.js"></script>
+    <script src="/scripts/feedback.js"></script>
+    <script src="/scripts/session-pose.js"></script>
     <script src="/app.js"></script>
+    <script src="/scripts/pwa.js"></script>
   </body>
 </html>

@@ -1,0 +1,42 @@
+plugins {
+    id 'com.android.application'
+}
+
+def hostedAppUrl = (project.findProperty('BOXING_COACH_HOSTED_APP_URL') ?: '').toString()
+def escapedHostedAppUrl = hostedAppUrl.replace('\\', '\\\\').replace('"', '\\"')
+
+android {
+    namespace 'com.boxingcoach.tablet'
+    compileSdk 35
+
+    defaultConfig {
+        applicationId 'com.boxingcoach.tablet'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+        buildConfigField 'String', 'HOSTED_APP_URL', "\"${escapedHostedAppUrl}\""
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    sourceSets {
+        main {
+            assets.srcDirs = ['../../web']
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}

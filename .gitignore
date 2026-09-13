@@ -1,0 +1,10 @@
+# Generated packages and copied release folders
+*.zip
+BoxingCoach_*/
+video_review_frames/
+
+# Local build output
+box/build/
+box/dist/
+box/coach.zip
+.tools/

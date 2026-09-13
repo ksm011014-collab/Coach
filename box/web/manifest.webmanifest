@@ -1,0 +1,28 @@
+{
+  "name": "APEX Boxing AI Coach",
+  "short_name": "APEX Coach",
+  "description": "체육관 회원 관리와 AI 복싱 코칭",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#050a10",
+  "theme_color": "#050a10",
+  "lang": "ko-KR",
+  "categories": ["fitness", "sports", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/app-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/app-icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}

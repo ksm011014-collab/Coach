@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>체육관 중앙관제 미리보기</title>
+    <link rel="stylesheet" href="../../web/styles.css" />
+    <style>
+      body { min-height: 100vh; padding: 24px; }
+      #viewContent { width: min(1500px, 100%); margin: 0 auto; }
+    </style>
+  </head>
+  <body>
+    <main id="viewContent" class="view-grid"></main>
+    <script>
+      const state = {
+        user: { id: "platform-admin", role: "PLATFORM_ADMIN", name: "개발사 관리자" },
+        platformCenters: [
+          {
+            id: "center-apex", name: "APEX 복싱 강남", code: "apex-gangnam", status: "ACTIVE",
+            subscription_status: "ACTIVE", plan_code: "pro", starts_at: "2026-08-01", ends_at: "2027-07-31",
+            max_members: 300, owner_count: 1, coach_count: 8, member_count: 184,
+            last_login_at: "2026-08-09T04:28:00Z", last_session_at: "2026-08-09T04:20:00Z",
+          },
+          {
+            id: "center-busan", name: "부산 파이트짐", code: "busan-fight", status: "SUSPENDED",
+            subscription_status: "PAST_DUE", plan_code: "starter", starts_at: "2026-05-01", ends_at: "2026-08-01",
+            max_members: 100, owner_count: 1, coach_count: 3, member_count: 72,
+            last_login_at: "2026-08-03T09:10:00Z", last_session_at: "2026-08-02T11:30:00Z",
+          },
+        ],
+        platformAuditLogs: [
+          { id: 1, actor_id: "platform-admin", center_id: "center-apex", target_type: "FEATURE_FLAG", target_id: "web.beta", action: "FEATURE_FLAG_UPDATED", created_at: "2026-08-09T04:25:00Z" },
+          { id: 2, actor_id: "platform-admin", center_id: "center-apex", target_type: "SUBSCRIPTION", target_id: "center-apex", action: "SUBSCRIPTION_UPDATED", created_at: "2026-08-09T04:10:00Z" },
+        ],
+        platformFeatureFlags: [
+          { center_id: "center-apex", flag_key: "web.beta", enabled: true, rollout_channel: "BETA" },
+          { center_id: "center-apex", flag_key: "ai.multicamera", enabled: true, rollout_channel: "STABLE" },
+        ],
+        selectedPlatformCenterId: "center-apex",
+        platformCenterSearch: "",
+        platformMessage: "샘플 데이터로 중앙 관제 화면을 확인하고 있습니다.",
+        showPlatformCenterCreateForm: false,
+      };
+      const $ = (selector) => document.querySelector(selector);
+      const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" })[character]);
+      const api = async () => ({ centers: state.platformCenters, audit_logs: state.platformAuditLogs, feature_flags: state.platformFeatureFlags });
+    </script>
+    <script src="../../web/scripts/platform-admin.js"></script>
+    <script>renderPlatformOperations();</script>
+  </body>
+</html>

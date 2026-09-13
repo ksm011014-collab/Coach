@@ -1,0 +1,116 @@
+name: Windows release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version such as 1.2.3
+        required: true
+      channel:
+        description: Update channel
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - beta
+      force_update:
+        description: Block launch until updated
+        required: true
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      BOXING_COACH_CERT_PASSWORD: ${{ secrets.MSIX_CERTIFICATE_PASSWORD }}
+      MSIX_PUBLISHER: ${{ secrets.MSIX_PUBLISHER }}
+      RELEASE_BASE_URI: ${{ vars.BOXING_COACH_RELEASE_BASE_URI }}
+      SUPABASE_URL: ${{ vars.BOXING_COACH_SUPABASE_URL }}
+      SUPABASE_PUBLISHABLE_KEY: ${{ vars.BOXING_COACH_SUPABASE_PUBLISHABLE_KEY }}
+      SIGNING_TIMESTAMP_URL: ${{ vars.MSIX_TIMESTAMP_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: box/requirements.txt
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve release inputs
+        id: release
+        shell: pwsh
+        run: |
+          $version = "${{ inputs.version }}"
+          if (!$version) { $version = $env:GITHUB_REF_NAME.TrimStart('v') }
+          $channel = "${{ inputs.channel }}"
+          if (!$channel) { $channel = "stable" }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "channel=$channel" >> $env:GITHUB_OUTPUT
+
+      - name: Install Python dependencies
+        working-directory: box
+        run: python -m pip install -r requirements.txt
+
+      - name: Run Python tests
+        working-directory: box
+        run: python -m unittest discover -s tests -v
+
+      - name: Run JavaScript tests
+        working-directory: box
+        run: |
+          node tests/test_motion_classifier.js
+          node tests/test_android_offline.js
+
+      - name: Restore Windows projects
+        run: dotnet restore box/windows/BoxingCoach.Desktop.SmokeTests/BoxingCoach.Desktop.SmokeTests.csproj --configfile box/NuGet.Config
+
+      - name: Run DPAPI smoke test
+        run: dotnet run --project box/windows/BoxingCoach.Desktop.SmokeTests/BoxingCoach.Desktop.SmokeTests.csproj --configuration Release --no-restore
+
+      - name: Decode signing certificate
+        shell: pwsh
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.MSIX_CERTIFICATE_BASE64 }}
+        run: |
+          if ($env:CERTIFICATE_BASE64) {
+            [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\boxingcoach.pfx", [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
+          }
+
+      - name: Build MSIX and App Installer
+        shell: pwsh
+        run: |
+          $arguments = @{
+            Version = "${{ steps.release.outputs.version }}"
+            Channel = "${{ steps.release.outputs.channel }}"
+            Publisher = $(if ($env:MSIX_PUBLISHER) { $env:MSIX_PUBLISHER } else { "CN=BoxingCoach Development" })
+            PackageBaseUri = $(if ($env:RELEASE_BASE_URI) { $env:RELEASE_BASE_URI } else { "https://example.invalid/boxingcoach" })
+            SupabaseUrl = $env:SUPABASE_URL
+            SupabasePublishableKey = $env:SUPABASE_PUBLISHABLE_KEY
+          }
+          if (Test-Path "$env:RUNNER_TEMP\boxingcoach.pfx") { $arguments.CertificatePath = "$env:RUNNER_TEMP\boxingcoach.pfx" }
+          if ($env:SIGNING_TIMESTAMP_URL) { $arguments.TimestampUrl = $env:SIGNING_TIMESTAMP_URL }
+          if ("${{ inputs.force_update }}" -eq "true") { $arguments.ForceUpdate = $true }
+          & .\box\windows\build-release.ps1 @arguments
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BoxingCoach-${{ steps.release.outputs.channel }}-${{ steps.release.outputs.version }}
+          path: box/artifacts/${{ steps.release.outputs.channel }}/
+          if-no-files-found: error

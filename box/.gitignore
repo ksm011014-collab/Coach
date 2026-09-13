@@ -6,6 +6,13 @@ __pycache__/
 .env
 .venv/
 node_modules/
+**/bin/
+**/obj/
+.android-toolchain/
+android/.gradle/
 dist/
 build/
+artifacts/
 coach.zip
+migration-work/
+*.migration-plan.json

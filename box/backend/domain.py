@@ -5,6 +5,7 @@ import dataclasses
 import hashlib
 import hmac
 import json
+import os
 import re
 import secrets
 import sqlite3
@@ -14,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 
-SECRET = "local-mvp-development-secret"
+SECRET = os.environ.get("BOXING_COACH_TOKEN_SECRET") or secrets.token_urlsafe(48)
 
 
 @dataclasses.dataclass
@@ -49,6 +50,23 @@ class MemberProfile:
     reach_cm: int
     stance: str
     injury_note: str
+    training_level: int = 1
+
+
+@dataclasses.dataclass
+class MemberCalibration:
+    id: str
+    profile_id: str
+    user_id: str
+    gym_id: str
+    status: str
+    completed: bool
+    completed_at: float
+    sample_count: int
+    estimated_reach_cm: int
+    camera_config: list[dict[str, Any]]
+    body_scale: dict[str, Any]
+    calibration: dict[str, Any]
 
 
 @dataclasses.dataclass
@@ -100,6 +118,11 @@ class Store:
         return {row["id"]: profile_from_row(row) for row in rows}
 
     @property
+    def calibrations(self) -> dict[str, MemberCalibration]:
+        rows = self.conn.execute("select * from member_calibrations").fetchall()
+        return {row["profile_id"]: calibration_from_row(row) for row in rows}
+
+    @property
     def sessions(self) -> dict[str, TrainingSession]:
         rows = self.conn.execute("select * from training_sessions order by started_at desc").fetchall()
         return {row["id"]: session_from_row(row) for row in rows}
@@ -143,6 +166,25 @@ class Store:
                     reach_cm integer not null default 172,
                     stance text not null default 'orthodox',
                     injury_note text not null default '',
+                    training_level integer not null default 1,
+                    foreign key (user_id) references users(id),
+                    foreign key (gym_id) references gyms(id)
+                );
+
+                create table if not exists member_calibrations (
+                    id text primary key,
+                    profile_id text not null unique,
+                    user_id text not null,
+                    gym_id text not null,
+                    status text not null,
+                    completed integer not null,
+                    completed_at real not null,
+                    sample_count integer not null,
+                    estimated_reach_cm integer not null default 0,
+                    camera_config text not null,
+                    body_scale text not null,
+                    calibration text not null,
+                    foreign key (profile_id) references member_profiles(id),
                     foreign key (user_id) references users(id),
                     foreign key (gym_id) references gyms(id)
                 );
@@ -185,6 +227,7 @@ class Store:
             self.ensure_column("member_profiles", "reach_cm", "integer not null default 172")
             self.ensure_column("member_profiles", "stance", "text not null default 'orthodox'")
             self.ensure_column("member_profiles", "injury_note", "text not null default ''")
+            self.ensure_column("member_profiles", "training_level", "integer not null default 1")
             self.ensure_column("training_sessions", "feedback_report", "text not null default ''")
             self.backfill_usernames()
             self.backfill_gym_codes()
@@ -323,6 +366,7 @@ class Store:
         reach_cm: int = 172,
         stance: str = "orthodox",
         injury_note: str = "",
+        training_level: int = 1,
     ) -> MemberProfile:
         profile = MemberProfile(
             id=f"profile_{user.id}",
@@ -337,13 +381,14 @@ class Store:
             reach_cm=reach_cm,
             stance=stance,
             injury_note=injury_note,
+            training_level=normalize_training_level(training_level),
         )
         with self.lock, self.conn:
             self.conn.execute(
                 """
                 insert or replace into member_profiles
-                (id, user_id, gym_id, name, phone, birthdate, gender, height_cm, weight_kg, reach_cm, stance, injury_note)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, user_id, gym_id, name, phone, birthdate, gender, height_cm, weight_kg, reach_cm, stance, injury_note, training_level)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     profile.id,
@@ -358,6 +403,7 @@ class Store:
                     profile.reach_cm,
                     profile.stance,
                     profile.injury_note,
+                    profile.training_level,
                 ),
             )
         return profile
@@ -371,12 +417,13 @@ class Store:
         return profile_from_row(row) if row else None
 
     def update_profile(self, profile: MemberProfile) -> MemberProfile:
+        profile = dataclasses.replace(profile, training_level=normalize_training_level(profile.training_level))
         with self.lock, self.conn:
             self.conn.execute(
                 """
                 update member_profiles
                 set name = ?, phone = ?, birthdate = ?, gender = ?, height_cm = ?, weight_kg = ?,
-                    reach_cm = ?, stance = ?, injury_note = ?
+                    reach_cm = ?, stance = ?, injury_note = ?, training_level = ?
                 where id = ?
                 """,
                 (
@@ -389,10 +436,61 @@ class Store:
                     profile.reach_cm,
                     profile.stance,
                     profile.injury_note,
+                    profile.training_level,
                     profile.id,
                 ),
             )
         return profile
+
+    def calibration_for_profile(self, profile_id: str) -> MemberCalibration | None:
+        row = self.conn.execute("select * from member_calibrations where profile_id = ?", (profile_id,)).fetchone()
+        return calibration_from_row(row) if row else None
+
+    def save_member_calibration(self, profile: MemberProfile, calibration: dict[str, Any]) -> MemberCalibration:
+        body_scale = calibration.get("body_scale") if isinstance(calibration.get("body_scale"), dict) else {}
+        raw_camera_config = calibration.get("cameras") or calibration.get("camera_config") or []
+        camera_config = raw_camera_config if isinstance(raw_camera_config, list) else []
+        estimated_reach = safe_int(body_scale.get("estimated_reach_cm") or calibration.get("estimated_reach_cm"))
+        record = MemberCalibration(
+            id=f"calibration_{profile.id}",
+            profile_id=profile.id,
+            user_id=profile.user_id,
+            gym_id=profile.gym_id,
+            status=str(calibration.get("status") or ""),
+            completed=bool(calibration.get("ready")),
+            completed_at=safe_float(calibration.get("completed_at"), time.time()),
+            sample_count=safe_int(calibration.get("sample_count")),
+            estimated_reach_cm=estimated_reach,
+            camera_config=camera_config,
+            body_scale=body_scale,
+            calibration=calibration,
+        )
+        with self.lock, self.conn:
+            self.conn.execute(
+                """
+                insert or replace into member_calibrations
+                (id, profile_id, user_id, gym_id, status, completed, completed_at, sample_count,
+                 estimated_reach_cm, camera_config, body_scale, calibration)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    record.id,
+                    record.profile_id,
+                    record.user_id,
+                    record.gym_id,
+                    record.status,
+                    1 if record.completed else 0,
+                    record.completed_at,
+                    record.sample_count,
+                    record.estimated_reach_cm,
+                    json.dumps(record.camera_config, ensure_ascii=False),
+                    json.dumps(record.body_scale, ensure_ascii=False),
+                    json.dumps(record.calibration, ensure_ascii=False),
+                ),
+            )
+            if estimated_reach > 0:
+                self.conn.execute("update member_profiles set reach_cm = ? where id = ?", (estimated_reach, profile.id))
+        return record
 
     def create_session(self, session: TrainingSession) -> TrainingSession:
         with self.lock, self.conn:
@@ -494,6 +592,33 @@ def validate_password(password: str) -> None:
         raise ValueError("password must be at least 8 characters and include a special character")
 
 
+def safe_int(value: Any, default: int = 0) -> int:
+    source = default if value is None or value == "" else value
+    try:
+        return int(source)
+    except (TypeError, ValueError):
+        return default
+
+
+def safe_float(value: Any, default: float = 0.0) -> float:
+    source = default if value is None or value == "" else value
+    try:
+        return float(source)
+    except (TypeError, ValueError):
+        return default
+
+
+def normalize_training_level(value: Any) -> int:
+    return max(1, min(5, safe_int(value, 1)))
+
+
+def decode_json(value: Any, default: Any) -> Any:
+    try:
+        return json.loads(value)
+    except (TypeError, json.JSONDecodeError):
+        return default
+
+
 def user_from_row(row: sqlite3.Row) -> User:
     values = dict(row)
     values.setdefault("username", values.get("email", "").split("@")[0])
@@ -518,15 +643,26 @@ def profile_from_row(row: sqlite3.Row) -> MemberProfile:
         "reach_cm": 172,
         "stance": "orthodox",
         "injury_note": "",
+        "training_level": 1,
     }
     for key, value in defaults.items():
         values.setdefault(key, value)
+    values["training_level"] = normalize_training_level(values["training_level"])
     return MemberProfile(**values)
+
+
+def calibration_from_row(row: sqlite3.Row) -> MemberCalibration:
+    values = dict(row)
+    values["completed"] = bool(values["completed"])
+    values["camera_config"] = decode_json(values["camera_config"], [])
+    values["body_scale"] = decode_json(values["body_scale"], {})
+    values["calibration"] = decode_json(values["calibration"], {})
+    return MemberCalibration(**values)
 
 
 def session_from_row(row: sqlite3.Row) -> TrainingSession:
     values = dict(row)
-    values["camera_config"] = json.loads(values["camera_config"])
+    values["camera_config"] = decode_json(values["camera_config"], [])
     values.setdefault("feedback_report", "")
     return TrainingSession(**values)
 

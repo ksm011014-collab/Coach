@@ -10,13 +10,16 @@ import sys
 import tempfile
 import threading
 import time
+import webbrowser
+import secrets
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler
 from pathlib import Path
 from typing import Any
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 try:
+    from central_gateway import CentralGatewayError, SupabaseGateway
     from domain import (
         CoachLabel,
         MemberProfile,
@@ -31,7 +34,9 @@ try:
         validate_password,
         verify_password,
     )
+    from pose3d import build_human_calibration, build_pose3d_packet, normalize_camera_config, opencv_status
 except ModuleNotFoundError:
+    from backend.central_gateway import CentralGatewayError, SupabaseGateway
     from backend.domain import (
         CoachLabel,
         MemberProfile,
@@ -46,15 +51,33 @@ except ModuleNotFoundError:
         validate_password,
         verify_password,
     )
+    from backend.pose3d import build_human_calibration, build_pose3d_packet, normalize_camera_config, opencv_status
 
 
-ROOT = Path(__file__).resolve().parents[1]
 if getattr(sys, "frozen", False):
-    ROOT = Path(sys.executable).resolve().parent
-WEB_ROOT = ROOT / "web"
-DATA_ROOT = ROOT / "backend"
-DATA_ROOT.mkdir(exist_ok=True)
+    RESOURCE_ROOT = Path(getattr(sys, "_MEIPASS", Path(sys.executable).resolve().parent))
+    local_app_data = os.environ.get("LOCALAPPDATA")
+    DATA_ROOT = (
+        Path(local_app_data) / "BoxingCoach"
+        if local_app_data
+        else Path.home() / "AppData" / "Local" / "BoxingCoach"
+    )
+else:
+    RESOURCE_ROOT = Path(__file__).resolve().parents[1]
+    DATA_ROOT = RESOURCE_ROOT / "backend"
+WEB_ROOT = RESOURCE_ROOT / "web"
+DATA_ROOT.mkdir(parents=True, exist_ok=True)
 STORE = Store(DATA_ROOT / "boxing_coach.db")
+CENTRAL_GATEWAY = SupabaseGateway.from_environment()
+BRIDGE_SECRET = os.environ.get("BOXING_COACH_BRIDGE_SECRET", "")
+LOCAL_BRIDGE_PATHS = {
+    "/api/system/pose3d",
+    "/api/pose/3d",
+    "/api/calibration/human",
+    "/api/recordings/convert",
+}
+MAX_JSON_BODY = 1024 * 1024
+MAX_RECORDING_BODY = 256 * 1024 * 1024
 
 
 class ApiHandler(SimpleHTTPRequestHandler):
@@ -64,7 +87,13 @@ class ApiHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(path)
         if parsed.path == "/":
             return str(WEB_ROOT / "index.html")
-        return str(WEB_ROOT / parsed.path.lstrip("/"))
+        requested = Path(unquote(parsed.path).lstrip("/"))
+        resolved = (WEB_ROOT / requested).resolve()
+        try:
+            resolved.relative_to(WEB_ROOT.resolve())
+        except ValueError:
+            return str(WEB_ROOT / "__not_found__")
+        return str(resolved)
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -76,6 +105,9 @@ class ApiHandler(SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         path = urlparse(self.path).path
         if path == "/api/recordings/convert":
+            if not self.bridge_request_allowed(path):
+                self.respond({"error": "forbidden local bridge request"}, HTTPStatus.FORBIDDEN)
+                return
             try:
                 self.convert_recording()
             except PermissionError as exc:
@@ -85,17 +117,54 @@ class ApiHandler(SimpleHTTPRequestHandler):
             except Exception as exc:
                 self.respond({"error": "server error", "detail": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
             return
-        self.route_api("POST", path, self.read_json())
+        try:
+            body = self.read_json()
+        except ValueError as exc:
+            self.respond({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        self.route_api("POST", path, body)
 
     def do_PATCH(self) -> None:
-        self.route_api("PATCH", urlparse(self.path).path, self.read_json())
+        try:
+            body = self.read_json()
+        except ValueError as exc:
+            self.respond({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        self.route_api("PATCH", urlparse(self.path).path, body)
+
+    def do_PUT(self) -> None:
+        try:
+            body = self.read_json()
+        except ValueError as exc:
+            self.respond({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+            return
+        self.route_api("PUT", urlparse(self.path).path, body)
 
     def do_DELETE(self) -> None:
         self.route_api("DELETE", urlparse(self.path).path, None)
 
     def route_api(self, method: str, path: str, body: dict[str, Any] | None) -> None:
         try:
-            if method == "POST" and path == "/api/auth/login":
+            if not self.bridge_request_allowed(path):
+                self.respond({"error": "forbidden local bridge request"}, HTTPStatus.FORBIDDEN)
+                return
+            if CENTRAL_GATEWAY is not None and CENTRAL_GATEWAY.handles(method, path):
+                payload, status = CENTRAL_GATEWAY.route(
+                    method,
+                    path,
+                    body,
+                    urlparse(self.path).query,
+                    self.headers.get("Authorization", ""),
+                )
+                self.respond(payload, status)
+            elif method == "GET" and path == "/api/system/health":
+                self.respond({
+                    "status": "ok",
+                    "service": "boxing-coach-local",
+                    "version": "0.2.0",
+                    "public_center_signup": CENTRAL_GATEWAY is None,
+                })
+            elif method == "POST" and path == "/api/auth/login":
                 self.login(body or {})
             elif method == "POST" and path == "/api/auth/signup":
                 self.signup(body or {})
@@ -103,10 +172,16 @@ class ApiHandler(SimpleHTTPRequestHandler):
                 self.check_username(urlparse(self.path).query)
             elif method == "GET" and path == "/api/me":
                 self.me()
+            elif method == "GET" and path == "/api/system/pose3d":
+                self.pose3d_system()
             elif method == "GET" and path == "/api/members":
                 self.members()
             elif method == "POST" and path == "/api/members":
                 self.create_member(body or {})
+            elif method == "GET" and path.startswith("/api/members/") and path.endswith("/calibration"):
+                self.member_calibration(path.split("/")[-2])
+            elif method == "POST" and path.startswith("/api/members/") and path.endswith("/calibration"):
+                self.save_member_calibration(path.split("/")[-2], body or {})
             elif method == "GET" and path.startswith("/api/members/"):
                 self.member_detail(path.rsplit("/", 1)[-1])
             elif method == "PATCH" and path.startswith("/api/members/"):
@@ -125,14 +200,29 @@ class ApiHandler(SimpleHTTPRequestHandler):
             elif method == "POST" and path.endswith("/labels") and path.startswith("/api/sessions/"):
                 session_id = path.split("/")[-2]
                 self.create_label(session_id, body or {})
+            elif method == "POST" and path == "/api/pose/3d":
+                self.pose_3d(body or {})
+            elif method == "POST" and path == "/api/calibration/human":
+                self.human_calibration(body or {})
             else:
                 self.respond({"error": "not found"}, HTTPStatus.NOT_FOUND)
+        except CentralGatewayError as exc:
+            payload = {"error": str(exc)}
+            if exc.detail and os.environ.get("BOXING_COACH_DEBUG") == "1":
+                payload["detail"] = exc.detail
+            self.respond(payload, exc.status)
         except PermissionError as exc:
             self.respond({"error": str(exc)}, HTTPStatus.FORBIDDEN)
         except ValueError as exc:
             self.respond({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
         except Exception as exc:
             self.respond({"error": "server error", "detail": str(exc)}, HTTPStatus.INTERNAL_SERVER_ERROR)
+
+    def bridge_request_allowed(self, path: str) -> bool:
+        if not BRIDGE_SECRET or path not in LOCAL_BRIDGE_PATHS:
+            return True
+        supplied = self.headers.get("X-BoxingCoach-Bridge", "")
+        return secrets.compare_digest(supplied, BRIDGE_SECRET)
 
     def login(self, body: dict[str, Any]) -> None:
         username = str(body.get("username") or body.get("email") or "")
@@ -191,16 +281,20 @@ class ApiHandler(SimpleHTTPRequestHandler):
 
     def members(self) -> None:
         user = self.require_user()
-        members = []
-        for profile in STORE.profiles.values():
-            if not can_read_profile(user, profile):
-                continue
-            values = serialize(profile)
-            account = STORE.get_user(profile.user_id)
-            if account:
-                values.update({"username": account.username, "email": account.email, "role": account.role})
-            members.append(values)
+        members = [member_payload(profile) for profile in STORE.profiles.values() if can_read_profile(user, profile)]
         self.respond({"members": members})
+
+    def require_profile(self, member_id: str) -> MemberProfile:
+        user = self.require_user()
+        return self.accessible_profile(user, member_id)
+
+    def accessible_profile(self, user: Any, member_id: str) -> MemberProfile:
+        profile = STORE.get_profile(member_id)
+        if profile is None:
+            raise ValueError("member not found")
+        if not can_read_profile(user, profile):
+            raise PermissionError("member is outside your access scope")
+        return profile
 
     def create_member(self, body: dict[str, Any]) -> None:
         user = self.require_user()
@@ -223,36 +317,38 @@ class ApiHandler(SimpleHTTPRequestHandler):
             phone=str(body.get("phone") or ""),
             birthdate=str(body.get("birthdate") or ""),
             gender=str(body.get("gender") or ""),
+            training_level=body.get("training_level", 1),
         )
-        values = serialize(profile)
-        values.update({"username": member.username, "email": member.email, "role": member.role})
-        self.respond({"member": values}, HTTPStatus.CREATED)
+        self.respond({"member": member_payload(profile, member)}, HTTPStatus.CREATED)
+
+    def member_calibration(self, member_id: str) -> None:
+        profile = self.require_profile(member_id)
+        self.respond({"calibration": serialize(STORE.calibration_for_profile(profile.id))})
+
+    def save_member_calibration(self, member_id: str, body: dict[str, Any]) -> None:
+        profile = self.require_profile(member_id)
+        calibration = body.get("calibration") if isinstance(body.get("calibration"), dict) else body
+        if not calibration.get("ready"):
+            raise ValueError("only ready calibrations can be saved")
+        saved = STORE.save_member_calibration(profile, calibration)
+        self.respond({"calibration": serialize(saved), "member": member_payload(STORE.get_profile(profile.id) or profile)})
 
     def member_detail(self, member_id: str) -> None:
-        user = self.require_user()
-        profile = STORE.get_profile(member_id)
-        if profile is None:
-            raise ValueError("member not found")
-        if not can_read_profile(user, profile):
-            raise PermissionError("member is outside your access scope")
+        profile = self.require_profile(member_id)
         self.respond({"member": serialize(profile)})
 
     def update_member(self, member_id: str, body: dict[str, Any]) -> None:
         user = self.require_user()
-        profile = STORE.profiles.get(member_id)
-        if profile is None:
-            raise ValueError("member not found")
-        if user.role != "OWNER" and user.id != profile.user_id:
-            raise PermissionError("cannot update this member")
-        if user.gym_id != profile.gym_id:
-            raise PermissionError("member is outside your center")
+        profile = self.accessible_profile(user, member_id)
         allowed = {"phone", "birthdate", "gender", "height_cm", "weight_kg", "reach_cm", "stance", "injury_note", "name"}
+        if user.role == "OWNER":
+            allowed.add("training_level")
         values = dataclasses.asdict(profile)
         for key in allowed:
             if key in body:
                 values[key] = body[key]
         updated = STORE.update_profile(MemberProfile(**values))
-        self.respond({"member": serialize(updated)})
+        self.respond({"member": member_payload(updated)})
 
     def create_session(self, body: dict[str, Any]) -> None:
         user = self.require_user()
@@ -268,8 +364,7 @@ class ApiHandler(SimpleHTTPRequestHandler):
             gym_id=user.gym_id,
             started_at=time.time(),
             ended_at=None,
-            camera_config=body.get("camera_config")
-            or [{"camera_id": "cam_front_01", "view_angle": "front", "enabled": True}],
+            camera_config=normalize_camera_config(body.get("camera_config")),
             overall_score=0,
             focus=str(body.get("focus") or "guard_and_strikes"),
             feedback_report="",
@@ -333,6 +428,37 @@ class ApiHandler(SimpleHTTPRequestHandler):
         STORE.create_label(label)
         self.respond({"label": serialize(label)}, HTTPStatus.CREATED)
 
+    def pose_3d(self, body: dict[str, Any]) -> None:
+        self.require_user()
+        self.respond({"pose": build_pose3d_packet(body)})
+
+    def human_calibration(self, body: dict[str, Any]) -> None:
+        user = self.require_user()
+        calibration = build_human_calibration(body)
+        member_id = str(body.get("member_id") or body.get("profile_id") or "")
+        response: dict[str, Any] = {"calibration": calibration}
+        if member_id and calibration.get("ready"):
+            if CENTRAL_GATEWAY is not None:
+                token = self.headers.get("Authorization", "").removeprefix("Bearer ").strip()
+                saved = CENTRAL_GATEWAY.save_calibration(token, member_id, calibration)
+                response.update({"saved_calibration": saved["calibration"], "member": saved["member"]})
+            else:
+                profile = self.require_profile(member_id)
+                saved = STORE.save_member_calibration(profile, calibration)
+                response.update({"saved_calibration": serialize(saved), "member": serialize(STORE.get_profile(profile.id))})
+        self.respond(response)
+
+    def pose3d_system(self) -> None:
+        self.require_user()
+        self.respond(
+            {
+                "opencv": opencv_status(),
+                "python": sys.version.split()[0],
+                "max_cameras": 3,
+                "pose_space": "world_3d",
+            }
+        )
+
     def convert_recording(self) -> None:
         self.require_user()
         ffmpeg = ffmpeg_executable()
@@ -341,6 +467,8 @@ class ApiHandler(SimpleHTTPRequestHandler):
         size = int(self.headers.get("Content-Length") or 0)
         if size == 0:
             raise ValueError("recording is empty")
+        if size < 0 or size > MAX_RECORDING_BODY:
+            raise ValueError("recording exceeds the 256 MB conversion limit")
         source = self.rfile.read(size)
         with tempfile.TemporaryDirectory() as directory:
             input_path = Path(directory) / "recording.webm"
@@ -377,6 +505,8 @@ class ApiHandler(SimpleHTTPRequestHandler):
         return self.user_from_token(auth.replace("Bearer ", "", 1))
 
     def user_from_token(self, token: str) -> Any:
+        if CENTRAL_GATEWAY is not None:
+            return CENTRAL_GATEWAY.actor(token)
         payload = read_token(token)
         user = STORE.get_user(payload["sub"])
         if user is None:
@@ -387,7 +517,12 @@ class ApiHandler(SimpleHTTPRequestHandler):
         size = int(self.headers.get("Content-Length") or 0)
         if size == 0:
             return {}
-        return json.loads(self.rfile.read(size).decode("utf-8"))
+        if size < 0 or size > MAX_JSON_BODY:
+            raise ValueError("JSON request exceeds the 1 MB limit")
+        try:
+            return json.loads(self.rfile.read(size).decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            raise ValueError("invalid JSON body") from exc
 
     def respond(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         encoded = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -420,6 +555,14 @@ def public_user(user: Any) -> dict[str, Any]:
     }
 
 
+def member_payload(profile: MemberProfile, account: Any | None = None) -> dict[str, Any]:
+    values = serialize(profile)
+    account = account or STORE.get_user(profile.user_id)
+    if account:
+        values.update({"username": account.username, "email": account.email, "role": account.role})
+    return values
+
+
 def ffmpeg_executable() -> str | None:
     ffmpeg = shutil.which("ffmpeg")
     if ffmpeg:
@@ -434,19 +577,39 @@ def ffmpeg_executable() -> str | None:
 
 class ThreadedServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = True
+    daemon_threads = True
+
+
+def create_server(host: str, port: int) -> ThreadedServer:
+    return ThreadedServer((host, port), ApiHandler)
+
+
+def public_server_url(server: ThreadedServer, configured_host: str) -> str:
+    bound_host, bound_port = server.server_address[:2]
+    browser_host = "127.0.0.1" if configured_host in {"0.0.0.0", "::"} else str(bound_host)
+    return f"http://{browser_host}:{bound_port}"
 
 
 def main() -> None:
     os.chdir(WEB_ROOT)
-    server = ThreadedServer(("127.0.0.1", 8000), ApiHandler)
-    print("Boxing AI Coach MVP running at http://127.0.0.1:8000")
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
+    host = os.environ.get("BOXING_COACH_HOST", "127.0.0.1")
+    port = int(os.environ.get("BOXING_COACH_PORT", "8000"))
+    server = create_server(host, port)
+    url = public_server_url(server, host)
+    print(f"Boxing AI Coach MVP running at {url}")
+    print(
+        "BOXING_COACH_READY "
+        + json.dumps({"url": url, "pid": os.getpid(), "data_root": str(DATA_ROOT)}, ensure_ascii=False),
+        flush=True,
+    )
+    if os.environ.get("BOXING_COACH_OPEN_BROWSER", "1") != "0":
+        threading.Timer(1.0, webbrowser.open, args=(url,)).start()
     try:
-        while True:
-            time.sleep(3600)
+        server.serve_forever(poll_interval=0.25)
     except KeyboardInterrupt:
-        server.shutdown()
+        pass
+    finally:
+        server.server_close()
 
 
 if __name__ == "__main__":
