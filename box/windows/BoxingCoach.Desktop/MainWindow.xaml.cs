@@ -44,8 +44,8 @@ public partial class MainWindow : Window
                 workerEnvironment["BOXING_COACH_BRIDGE_SECRET"] = bridgeSecret;
             }
 
-            DesktopDiagnostics.Write("Starting local AI backend.");
-            StatusText.Text = "로컬 AI 엔진을 시작하는 중입니다.";
+            DesktopDiagnostics.Write("Starting local worker.");
+            StatusText.Text = "로컬 장치 서비스를 시작하는 중입니다.";
             _backend = await LocalBackendProcess.StartAsync(TimeSpan.FromSeconds(30), workerEnvironment);
             DesktopDiagnostics.Write($"Local backend ready at {_backend.AppUri} (PID {_backend.ProcessId}).");
             _fallbackOrigin = OriginOf(_backend.AppUri);
@@ -66,12 +66,12 @@ public partial class MainWindow : Window
             DesktopDiagnostics.Write("WebView2 initialized.");
             ConfigureWebView();
 
-            var engineVersion = typeof(MainWindow).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
+            var workerStatus = await WorkerStatus.ReadAsync(_backend.AppUri);
             _nativeBridge = new NativeBridge(
                 AppWebView.CoreWebView2,
                 new DpapiSessionStore(),
                 _allowedOrigins,
-                engineVersion,
+                workerStatus,
                 _hostedUi);
             _localApiProxy = new LocalApiProxy(AppWebView.CoreWebView2, _backend.AppUri, bridgeSecret);
 
@@ -79,8 +79,8 @@ public partial class MainWindow : Window
             _currentOrigin = OriginOf(appSource);
             AppWebView.Source = appSource;
             StatusText.Text = _hostedUi
-                ? "중앙 웹과 로컬 AI 엔진을 연결했습니다."
-                : "로컬 AI 엔진에 연결했습니다.";
+                ? "중앙 웹과 로컬 장치 서비스를 연결했습니다."
+                : "로컬 장치 서비스에 연결했습니다.";
         }
         catch (Exception error)
         {
@@ -108,7 +108,7 @@ public partial class MainWindow : Window
             if (_currentOrigin is null || !LocalOriginPolicy.IsSameOrigin(_currentOrigin, eventArgs.Uri))
             {
                 eventArgs.Cancel = true;
-                DesktopDiagnostics.Write($"Blocked navigation to {eventArgs.Uri}");
+                DesktopDiagnostics.Write("Blocked navigation to an unapproved origin.");
             }
         };
         core.NewWindowRequested += (_, eventArgs) => eventArgs.Handled = true;

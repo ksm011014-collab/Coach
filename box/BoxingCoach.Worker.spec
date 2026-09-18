@@ -4,7 +4,7 @@ from pathlib import Path
 from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs
 
 project_root = Path(SPECPATH).resolve()
-binaries = collect_dynamic_libs("imageio_ffmpeg") + collect_dynamic_libs("cv2")
+binaries = collect_dynamic_libs("imageio_ffmpeg")
 datas = [(str(project_root / "web"), "web")]
 datas += collect_data_files("imageio_ffmpeg", includes=["binaries/*"])
 
@@ -13,7 +13,7 @@ analysis = Analysis(
     pathex=[str(project_root)],
     binaries=binaries,
     datas=datas,
-    hiddenimports=["cv2", "imageio_ffmpeg", "numpy", "backend.central_gateway"],
+    hiddenimports=["imageio_ffmpeg", "backend.central_gateway"],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

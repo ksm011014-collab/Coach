@@ -1,6 +1,8 @@
 # Boxing AI Coach MVP
 
-MediaPipe-based real-time pose coaching, role-based center member management, and a Jarvis-like HUD coaching screen in one local MVP.
+다른 기기에서 작업을 이어갈 때는 루트의 [CONTINUE_HERE.md](../CONTINUE_HERE.md)를 먼저 읽으세요. 원본 목표·진행 내역·환경 준비 명령이 저장소에 포함돼 있습니다.
+
+Center/member management, camera previews, local workout recording, and training session records. The previous analysis engine has been removed; the UI displays “분석 엔진 준비 중”. See [engine removal and DB follow-up](docs/ENGINE_REMOVAL.md).
 
 ## Windows desktop product
 
@@ -38,12 +40,6 @@ If the local `.venv` exists, prefer it because it includes the app dependencies:
 .\.venv\Scripts\python.exe backend/server.py
 ```
 
-Check OpenCV/NumPy before multi-camera sample validation:
-
-```powershell
-.\.venv\Scripts\python.exe -c "import cv2, numpy; print(cv2.__version__, numpy.__version__)"
-```
-
 ```powershell
 python backend/server.py
 ```
@@ -54,25 +50,15 @@ Open:
 http://127.0.0.1:8000
 ```
 
-To open the app on a TV, tablet, or other device on the same Wi-Fi, start the server in LAN mode and open `http://192.168.45.212:8000` on that device:
+The worker binds to loopback by default. A new database has no default accounts or passwords. Create a local center administrator through signup, then use that center's code for member signup.
+
+Existing unversioned SQLite databases are never upgraded at startup. Stop the worker and obtain explicit approval before running the offline upgrade with a new backup path:
 
 ```powershell
-$env:BOXING_COACH_HOST = "0.0.0.0"
-.\.venv\Scripts\python.exe backend/server.py
+python tools/migrate_sqlite.py --database PATH_TO_EXISTING_DB --backup NEW_BACKUP_PATH --approve-migration
 ```
 
-Seed accounts:
-
-```text
-owner / Owner!123
-member / Member!123
-```
-
-Default center code:
-
-```text
-apex
-```
+To preview without touching an existing database, set `BOXING_COACH_DB_PATH` to a new disposable path before starting the worker. See [backend stabilization and migration conditions](docs/refoundation/02-backend.md) and [device API contract](docs/refoundation/03-device-contract.md).
 
 ## What is implemented
 
@@ -82,43 +68,29 @@ apex
 - Member access only to their own profile and sessions.
 - Training sessions with camera metadata ready for future multi-camera expansion.
 - Coach labels for later model-training datasets.
-- Browser-side MediaPipe pose detection that emits keypoints, score, target action, feedback, camera status, and boxing-specific metrics.
-- Camera rig settings for 1/2/3 camera modes, including human-pose calibration in Settings.
-- Optional backend 3D pose endpoint that accepts multi-camera keypoint observations and uses OpenCV triangulation when calibrated projection matrices are available.
-- Static HUD UI with sidebar, skeleton canvas, live camera panel, score, target action, and feedback overlays.
+- Camera permission requests and device selection for up to three cameras.
+- Camera previews independent of session creation.
+- Primary-camera recording with MediaRecorder, IndexedDB persistence, playback, download, and optional local FFmpeg conversion.
+- Session start/end, elapsed time, and configured duration; no scores or generated feedback.
 
-## MediaPipe pose detection
+## Camera and session foundation
 
-Real-time coaching uses MediaPipe Pose Landmarker directly in the browser. The backend only serves the app and stores member/session data, so the webcam stream does not pass through Python.
+`web/scripts/session.js` owns capture, recording, and session lifecycle. `web/scripts/preferences.js` owns device settings. `backend/camera.py` accepts capture metadata only. Future analysis should consume camera sources through a separate module and must not become a prerequisite for session storage.
 
-- The browser loads `@mediapipe/tasks-vision` from CDN.
-- The app uses the lightweight Pose Landmarker model with GPU delegation when available.
-- Camera video, skeleton drawing, feedback, score, and recording are all handled in the HUD without a pose backend.
+The camera stream stays on the device. A recording contains the primary camera video; additional cameras are previews. No models, skeleton overlays, punch events, voice feedback, or simulated results are generated.
 
-The cloud API should continue storing keypoints, scores, events, and labels rather than raw video by default.
-
-## Multi-camera 3D pose
-
-The app now stores session camera configuration for one, two, or three cameras. Settings includes a Camera Rig panel where an operator can choose the camera count, assign detected browser camera devices, and run human-pose calibration.
-
-- 1 camera runs the current browser MediaPipe 2D skeleton path.
-- 2 cameras enable the minimum 3D rig mode after calibration.
-- 3 cameras use the same path with an extra view for occlusion recovery and better confidence.
-
-Human calibration captures synchronized MediaPipe keypoints while the athlete stands centered, holds an A-pose, and rotates slowly. The backend endpoint `POST /api/calibration/human` estimates relative camera geometry with OpenCV and returns calibrated camera entries with `projection_matrix` values. The app saves those values locally in the camera rig settings.
-
-Each member must complete calibration before their first coaching session. The user enters height only; the calibration samples estimate body scale, arm length, and shoulder width, then automatically save `reach_cm` back to the member profile. Reach is displayed as an auto-calculated value rather than a manual signup/profile field.
-
-The backend also exposes `POST /api/pose/3d` for multi-camera packets. It expects `camera_config` and synchronized 2D keypoint `observations`; if at least two calibrated cameras include `projection_matrix` values and `opencv-python` is installed, it returns `keypoints_3d`. Without calibration or OpenCV, the endpoint returns a clear status such as `calibration_required` or `opencv_unavailable` instead of failing the live 2D HUD.
-
-3D readiness and calibration persistence endpoints:
-
-- `GET /api/system/pose3d` returns Python/OpenCV availability for the active server process.
-- `GET /api/members/{profile_id}/calibration` returns the saved calibration for an accessible member.
-- `POST /api/members/{profile_id}/calibration` stores a ready calibration and updates auto-estimated reach.
+Existing database tables and archived analysis data are preserved. Retired application endpoints return 404. Historical Supabase migrations remain unchanged; already-deployed database RPCs require a separate staging-reviewed retirement migration before their direct access is disabled.
 
 ## Tests
 
 ```powershell
 python -m unittest discover -s tests
 ```
+
+```powershell
+node tests/test_android_offline.js
+# Requires Playwright and a local Chrome installation; uses a temporary database.
+node tests/test_session_browser.js
+```
+
+Set `BOXING_COACH_PYTHON` for the browser test when Python is not on PATH. `BOXING_COACH_BROWSER_CHANNEL` may select another installed Playwright browser channel. Local runtime tests set `BOXING_COACH_DB_PATH` to an isolated temporary database; they do not open the normal application database.

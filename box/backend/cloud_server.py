@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import socketserver
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler
@@ -10,8 +11,10 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 
 try:
+    from runtime_contract import capabilities, request_origin_allowed
     from central_gateway import CentralGatewayError, SupabaseGateway
 except ModuleNotFoundError:
+    from backend.runtime_contract import capabilities, request_origin_allowed
     from backend.central_gateway import CentralGatewayError, SupabaseGateway
 
 
@@ -23,6 +26,17 @@ MAX_JSON_BODY = 1024 * 1024
 class CloudApiHandler(SimpleHTTPRequestHandler):
     server_version = "BoxingCoachCloud/0.3"
     gateway: SupabaseGateway
+
+    def parse_request(self) -> bool:
+        if not super().parse_request():
+            return False
+        if not request_origin_allowed(self.headers, self.server.server_address[1]):
+            self.respond({"error": "unapproved request origin"}, HTTPStatus.FORBIDDEN)
+            return False
+        return True
+
+    def log_request(self, code="-", size="-") -> None:
+        sys.stderr.write(f"HTTP {self.command} {code}\n")
 
     def translate_path(self, path: str) -> str:
         parsed = urlparse(path)
@@ -83,6 +97,7 @@ class CloudApiHandler(SimpleHTTPRequestHandler):
                     "service": "boxing-coach-cloud",
                     "data_mode": "supabase",
                     "public_center_signup": False,
+                    "capabilities": capabilities("supabase", local=False),
                 },
                 HTTPStatus.OK,
             )
@@ -107,13 +122,11 @@ class CloudApiHandler(SimpleHTTPRequestHandler):
             self.respond(payload, status)
         except CentralGatewayError as error:
             payload = {"error": str(error)}
-            if error.detail and os.environ.get("BOXING_COACH_DEBUG") == "1":
-                payload["detail"] = error.detail
             self.respond(payload, error.status)
-        except Exception as error:
+        except (ValueError, TypeError, KeyError):
+            self.respond({"error": "invalid request fields"}, HTTPStatus.BAD_REQUEST)
+        except Exception:
             payload = {"error": "중앙 서버 요청을 처리하지 못했습니다."}
-            if os.environ.get("BOXING_COACH_DEBUG") == "1":
-                payload["detail"] = str(error)
             self.respond(payload, HTTPStatus.INTERNAL_SERVER_ERROR)
 
     def read_json(self) -> dict[str, Any]:

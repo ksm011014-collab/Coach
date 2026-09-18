@@ -37,7 +37,7 @@ export default {
 
     const { data: actor, error: actorError } = await adminClient
       .from("accounts")
-      .select("id, center_id, role, status")
+      .select("id, center_id, role, status, token_version")
       .eq("id", userData.user.id)
       .single();
     if (actorError || !actor || actor.status !== "ACTIVE") {
@@ -52,6 +52,7 @@ export default {
     let body: Record<string, unknown>;
     try {
       body = await request.json();
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("invalid body");
     } catch {
       return response({ error: "요청 형식이 올바르지 않습니다." }, 400);
     }
@@ -63,10 +64,14 @@ export default {
     const role = String(body.role ?? "MEMBER").toUpperCase() as AppRole;
     const requestedCenterId = body.center_id ? String(body.center_id) : actor.center_id;
 
+    if (displayName.length < 1 || displayName.length > 100 || contactEmail.length > 254) {
+      return response({ error: "이름 또는 이메일 길이가 올바르지 않습니다." }, 400);
+    }
+
     if (!/^[a-z0-9_]{4,20}$/.test(username)) {
       return response({ error: "아이디는 영문 소문자, 숫자, _ 조합 4~20자리여야 합니다." }, 400);
     }
-    if (password.length < 8 || !/[^A-Za-z0-9]/.test(password)) {
+    if (password.length < 8 || password.length > 256 || !/[^A-Za-z0-9]/.test(password)) {
       return response({ error: "비밀번호는 특수문자를 포함한 8자리 이상이어야 합니다." }, 400);
     }
     if (!(["PLATFORM_ADMIN", "CENTER_OWNER", "COACH", "MEMBER"] as string[]).includes(role)) {
@@ -91,6 +96,7 @@ export default {
         role,
         center_id: role === "PLATFORM_ADMIN" ? null : requestedCenterId,
         created_by: actor.id,
+        creator_token_version: actor.token_version,
       })
       .select("nonce")
       .single();
@@ -98,7 +104,11 @@ export default {
       return response({ error: duplicateMessage(provisionError?.message) }, 409);
     }
 
-    const syntheticEmail = `${username}@accounts.boxingcoach.app`;
+    const authEmailDomain = Deno.env.get("BOXING_COACH_AUTH_EMAIL_DOMAIN") || "accounts.boxingcoach.app";
+    if (!/^[a-z0-9.-]+$/i.test(authEmailDomain)) {
+      return response({ error: "서버 인증 도메인 설정이 올바르지 않습니다." }, 500);
+    }
+    const syntheticEmail = `${username}@${authEmailDomain}`;
     const { data: created, error: createError } = await adminClient.auth.admin.createUser({
       email: syntheticEmail,
       password,

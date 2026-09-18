@@ -102,8 +102,9 @@ python -m unittest discover -s tests
 For JavaScript tests, run the relevant test file with Node when the test is standalone, for example:
 
 ```powershell
-node tests/test_motion_classifier.js
 node tests/test_android_offline.js
+# Requires Playwright and an installed Chrome browser.
+node tests/test_session_browser.js
 ```
 
 For Windows changes, build or test the affected project when the required .NET SDK and packages are available:

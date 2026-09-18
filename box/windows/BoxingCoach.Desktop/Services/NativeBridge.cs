@@ -14,20 +14,20 @@ internal sealed class NativeBridge : IDisposable
     private readonly CoreWebView2 _webView;
     private readonly DpapiSessionStore _sessionStore;
     private readonly IReadOnlyCollection<Uri> _allowedOrigins;
-    private readonly string _engineVersion;
+    private readonly WorkerStatus _workerStatus;
     private readonly bool _hostedUi;
 
     public NativeBridge(
         CoreWebView2 webView,
         DpapiSessionStore sessionStore,
         IReadOnlyCollection<Uri> allowedOrigins,
-        string engineVersion,
+        WorkerStatus workerStatus,
         bool hostedUi)
     {
         _webView = webView;
         _sessionStore = sessionStore;
         _allowedOrigins = allowedOrigins;
-        _engineVersion = engineVersion;
+        _workerStatus = workerStatus;
         _hostedUi = hostedUi;
         _webView.WebMessageReceived += OnWebMessageReceived;
     }
@@ -39,7 +39,7 @@ internal sealed class NativeBridge : IDisposable
         {
             if (!LocalOriginPolicy.IsAllowed(_allowedOrigins, eventArgs.Source))
             {
-                DesktopDiagnostics.Write($"Rejected native message source: {eventArgs.Source}");
+                DesktopDiagnostics.Write("Rejected native message from an unapproved origin.");
                 return;
             }
 
@@ -69,7 +69,9 @@ internal sealed class NativeBridge : IDisposable
                     platform = "windows",
                     secureStorage = "dpapi",
                     bridgeProtocol = BridgeMessagePolicy.ProtocolVersion,
-                    engineVersion = _engineVersion,
+                    engineVersion = _workerStatus.EngineVersion,
+                    workerAvailable = _workerStatus.Available,
+                    capabilities = _workerStatus.Capabilities,
                     hostedUi = _hostedUi,
                     localApiBase = "/__local_api",
                 },

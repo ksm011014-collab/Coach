@@ -5,37 +5,16 @@
   const STORAGE_KEY = "boxing_android_database_v1";
   const originalFetch = window.fetch.bind(window);
   const nowSeconds = () => Date.now() / 1000;
-  const newId = (prefix) => `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
+  const newId = (prefix) => `${prefix}_${crypto.randomUUID()}`;
+  const authTokens = new Map();
+  let pendingApi = Promise.resolve();
 
   function initialDatabase() {
     return {
-      gyms: [{ id: "gym_apex", name: "APEX Boxing Lab", code: "apex" }],
-      users: [
-        {
-          id: "user_owner",
-          gym_id: "gym_apex",
-          username: "owner",
-          email: "",
-          password_hash: "82179db0ea3559b06b54e7ad39dbbe4b94c1e706fb68c56fc607519dd02e09f6",
-          role: "OWNER",
-          name: "김관리자",
-        },
-        {
-          id: "user_member",
-          gym_id: "gym_apex",
-          username: "member",
-          email: "",
-          password_hash: "0f295625414e1df6a95ff5039db15f982cad1d768d5a001f6bfcf3fd9c6993fd",
-          role: "MEMBER",
-          name: "이회원",
-        },
-      ],
-      profiles: [
-        memberProfile("profile_owner", "user_owner", "gym_apex", "김관리자", "010-0000-0001", "1985-01-01", "male"),
-        memberProfile("profile_member", "user_member", "gym_apex", "이회원", "010-0000-0002", "1995-01-01", "female"),
-      ],
+      gyms: [],
+      users: [],
+      profiles: [],
       sessions: [],
-      calibrations: [],
       labels: [],
     };
   }
@@ -59,10 +38,11 @@
   }
 
   function loadDatabase() {
-    try {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      if (stored?.users && stored?.profiles) return stored;
-    } catch {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw !== null) {
+      const stored = JSON.parse(raw);
+      if (["gyms", "users", "profiles", "sessions", "labels"].every(key => Array.isArray(stored?.[key]))) return stored;
+      throw new Error("invalid local database; recovery is required");
     }
     const database = initialDatabase();
     saveDatabase(database);
@@ -98,6 +78,29 @@
     return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
   }
 
+  async function passwordHash(value, salt = crypto.randomUUID()) {
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(value), "PBKDF2", false, ["deriveBits"]);
+    const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt: new TextEncoder().encode(salt), iterations: 120000 }, key, 256);
+    return `pbkdf2:${salt}:${Array.from(new Uint8Array(bits), byte => byte.toString(16).padStart(2, "0")).join("")}`;
+  }
+
+  async function passwordMatches(password, stored) {
+    if (typeof stored !== "string") return false;
+    if (!stored.startsWith("pbkdf2:")) return /^[a-f0-9]{64}$/.test(stored) && stored === await sha256(password);
+    const parts = stored.split(":");
+    return parts.length === 3 && stored === await passwordHash(password, parts[1]);
+  }
+
+  function validAccountInput(username, password) {
+    return /^[a-z0-9_]{4,20}$/.test(username) && typeof password === "string" && password.length >= 8 && password.length <= 256 && /[^A-Za-z0-9]/.test(password);
+  }
+
+  function issueToken(database, user) {
+    const token = `android:${crypto.randomUUID()}`;
+    authTokens.set(token, { userId: user.id, expires: nowSeconds() + 28800, version: user.token_version || 1 });
+    return { token, expires_in: 28800, user: publicUser(database, user) };
+  }
+
   function publicUser(database, user) {
     const gym = database.gyms.find((item) => item.id === user.gym_id);
     return {
@@ -120,8 +123,9 @@
   function authenticatedUser(database, options) {
     const header = new Headers(options.headers || {}).get("Authorization") || "";
     const token = header.startsWith("Bearer ") ? header.slice(7) : "";
-    const userId = token.startsWith("android:") ? token.slice(8) : "";
-    return database.users.find((item) => item.id === userId) || null;
+    const issued = authTokens.get(token);
+    if (!issued || issued.expires <= nowSeconds()) { authTokens.delete(token); return null; }
+    return database.users.find(item => item.id === issued.userId && (item.status || "ACTIVE") === "ACTIVE" && (item.token_version || 1) === issued.version) || null;
   }
 
   function accessibleProfile(database, user, profileId) {
@@ -134,7 +138,9 @@
   async function requestBody(options) {
     if (!options.body || typeof options.body !== "string") return {};
     try {
-      return JSON.parse(options.body);
+      const body = JSON.parse(options.body);
+      if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("JSON object required");
+      return body;
     } catch {
       throw new Error("invalid JSON body");
     }
@@ -151,6 +157,12 @@
       return errorResponse(error.message);
     }
 
+    if (method === "GET" && path === "/system/health") {
+      return jsonResponse({ status: "ok", service: "boxing-coach-android-local", version: "0.3.0", public_center_signup: true,
+        capabilities: { contract_version: 1, engine_version: "0.3.0", data_mode: "android-local",
+          analysis: { available: false, status: "not_installed" }, camera: { owner: "device", capture: "browser" },
+          recording_conversion: { owner: "local_worker", route_available: false } } });
+    }
     if (method === "GET" && path === "/auth/check-username") {
       const username = normalizeUsername(url.searchParams.get("username"));
       return jsonResponse({ username, available: Boolean(username) && !database.users.some((user) => user.username === username) });
@@ -159,19 +171,26 @@
     if (method === "POST" && path === "/auth/login") {
       const username = normalizeUsername(body.username || body.email);
       const user = database.users.find((item) => item.username === username);
-      if (!user || user.password_hash !== await sha256(body.password || "")) {
-        return errorResponse("invalid username or password", 403);
+      if (!user || !await passwordMatches(body.password || "", user.password_hash)) {
+        return errorResponse("invalid username or password", 401);
       }
-      return jsonResponse({ token: `android:${user.id}`, user: publicUser(database, user) });
+      if ((user.status || "ACTIVE") !== "ACTIVE") return errorResponse("account is suspended", 403);
+      if (!user.password_hash.startsWith("pbkdf2:")) {
+        user.password_hash = await passwordHash(body.password);
+        saveDatabase(database);
+      }
+      return jsonResponse(issueToken(database, user));
     }
 
     if (method === "POST" && path === "/auth/signup") {
       const username = normalizeUsername(body.username);
+      if (!validAccountInput(username, body.password)) return errorResponse("invalid username or password format");
       if (!username || database.users.some((item) => item.username === username)) {
         return errorResponse("username is already in use");
       }
       if (body.password !== body.password_confirm) return errorResponse("password confirmation does not match");
       const role = String(body.role || "MEMBER").toUpperCase();
+      if (!["OWNER", "MEMBER"].includes(role)) return errorResponse("public signup role is not allowed", 403);
       let gym;
       if (role === "OWNER") {
         const code = normalizeCenterCode(body.center_code) || `center${Math.random().toString(16).slice(2, 6)}`;
@@ -188,7 +207,7 @@
         gym_id: gym.id,
         username,
         email: String(body.email || ""),
-        password_hash: await sha256(body.password || ""),
+        password_hash: await passwordHash(body.password),
         role,
         name: String(body.name || username).trim(),
       };
@@ -196,11 +215,16 @@
       database.users.push(user);
       database.profiles.push(profile);
       saveDatabase(database);
-      return jsonResponse({ token: `android:${user.id}`, user: publicUser(database, user) }, 201);
+      return jsonResponse(issueToken(database, user), 201);
     }
 
     const user = authenticatedUser(database, options);
     if (!user) return errorResponse("authentication required", 401);
+
+    if (method === "POST" && path === "/auth/logout") {
+      authTokens.delete(new Headers(options.headers || {}).get("Authorization").slice(7));
+      return jsonResponse({ logged_out: true });
+    }
 
     if (method === "GET" && path === "/me") {
       const profile = database.profiles.find((item) => item.user_id === user.id) || null;
@@ -215,10 +239,11 @@
     if (method === "POST" && path === "/members") {
       if (user.role !== "OWNER") return errorResponse("only administrators can create members", 403);
       const username = normalizeUsername(body.username);
+      if (!validAccountInput(username, body.password)) return errorResponse("invalid username or password format");
       if (!username || database.users.some((item) => item.username === username)) return errorResponse("username is already in use");
       const member = {
         id: newId("user"), gym_id: user.gym_id, username, email: String(body.email || ""),
-        password_hash: await sha256(body.password || ""), role: "MEMBER", name: String(body.name || username).trim(),
+        password_hash: await passwordHash(body.password), role: "MEMBER", name: String(body.name || username).trim(),
       };
       const profile = memberProfile(newId("profile"), member.id, user.gym_id, member.name, body.phone, body.birthdate, body.gender);
       profile.training_level = Number(body.training_level || 1);
@@ -228,29 +253,6 @@
       return jsonResponse({ member: memberPayload(database, profile) }, 201);
     }
 
-    const calibrationMatch = path.match(/^\/members\/([^/]+)\/calibration$/);
-    if (calibrationMatch) {
-      const profile = accessibleProfile(database, user, calibrationMatch[1]);
-      if (!profile) return errorResponse("member not found", 404);
-      if (method === "GET") {
-        return jsonResponse({ calibration: database.calibrations.find((item) => item.profile_id === profile.id) || null });
-      }
-      if (method === "POST") {
-        const calibration = body.calibration || body;
-        if (!calibration.ready) return errorResponse("only ready calibrations can be saved");
-        const record = {
-          id: newId("calibration"), profile_id: profile.id, user_id: profile.user_id, gym_id: profile.gym_id,
-          status: calibration.status || "calibrated", completed: true, completed_at: nowSeconds(),
-          sample_count: Number(calibration.sample_count || 0), estimated_reach_cm: Number(calibration.body_scale?.estimated_reach_cm || 0),
-          camera_config: calibration.cameras || [], body_scale: calibration.body_scale || {}, calibration,
-        };
-        database.calibrations = database.calibrations.filter((item) => item.profile_id !== profile.id);
-        database.calibrations.push(record);
-        if (record.estimated_reach_cm) profile.reach_cm = record.estimated_reach_cm;
-        saveDatabase(database);
-        return jsonResponse({ calibration: record, member: memberPayload(database, profile) });
-      }
-    }
 
     const memberMatch = path.match(/^\/members\/([^/]+)$/);
     if (memberMatch) {
@@ -258,8 +260,20 @@
       if (!profile) return errorResponse("member not found", 404);
       if (method === "GET") return jsonResponse({ member: memberPayload(database, profile) });
       if (method === "PATCH") {
-        const allowed = ["phone", "birthdate", "gender", "height_cm", "weight_kg", "reach_cm", "stance", "injury_note", "name"];
-        if (user.role === "OWNER") allowed.push("training_level");
+        if (!["OWNER", "MEMBER"].includes(user.role) || (user.role === "MEMBER" && ("reach_cm" in body || "training_level" in body))) return errorResponse("profile fields are outside your mutation scope", 403);
+        const allowed = ["phone", "birthdate", "gender", "height_cm", "weight_kg", "reach_cm", "stance", "injury_note", "name", "training_level"];
+        if (Object.keys(body).some(key => !allowed.includes(key))) return errorResponse("unsupported profile fields", 400);
+        const limits = { name: 100, phone: 40, gender: 40, injury_note: 2000 };
+        const ranges = { height_cm: [100,250], weight_kg: [25,300], reach_cm: [0,300], training_level: [1,5] };
+        for (const [key, value] of Object.entries(body)) {
+          if (key in limits && (typeof value !== "string" || value.length > limits[key] || (key === "name" && !value.trim()))) return errorResponse(`invalid ${key}`, 400);
+          if (key in ranges && (!Number.isInteger(value) || value < ranges[key][0] || value > ranges[key][1])) return errorResponse(`invalid ${key}`, 400);
+          if (key === "stance" && !["orthodox", "southpaw"].includes(value)) return errorResponse("invalid stance", 400);
+          if (key === "birthdate" && value != null && value !== "") {
+            const date = new Date(`${value}T00:00:00Z`);
+            if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || Number(value.slice(0,4)) < 1 || !Number.isFinite(date.getTime()) || date.toISOString().slice(0,10) !== value) return errorResponse("invalid birthdate", 400);
+          }
+        }
         allowed.forEach((key) => { if (key in body) profile[key] = body[key]; });
         saveDatabase(database);
         return jsonResponse({ member: memberPayload(database, profile) });
@@ -274,12 +288,22 @@
     if (method === "POST" && path === "/sessions") {
       const targetUserId = String(body.user_id || user.id);
       const target = database.users.find((item) => item.id === targetUserId && item.gym_id === user.gym_id);
-      if (!target || (user.role !== "OWNER" && target.id !== user.id)) return errorResponse("target user is outside your center", 403);
+      if (!target || (target.status || "ACTIVE") !== "ACTIVE" || (user.role !== "OWNER" && target.id !== user.id)) return errorResponse("target user is outside your center", 403);
+      if (body.request_id != null && (typeof body.request_id !== "string" || body.request_id.length < 1 || body.request_id.length > 128)) return errorResponse("invalid request_id", 400);
+      if (body.focus != null && (typeof body.focus !== "string" || body.focus.length < 1 || body.focus.length > 100)) return errorResponse("invalid focus", 400);
       const session = {
         id: newId("session"), user_id: target.id, gym_id: user.gym_id, started_at: nowSeconds(), ended_at: null,
-        camera_config: body.camera_config || [{ camera_id: "tablet_camera", view_angle: "front", enabled: true }],
-        overall_score: 0, focus: String(body.focus || "guard_and_strikes"), feedback_report: "",
+        camera_config: (Array.isArray(body.camera_config) ? body.camera_config : [{ camera_id: "tablet_camera" }])
+          .slice(0, 3).filter(camera => camera && typeof camera === "object")
+          .map(camera => ({ camera_id: String(camera.camera_id || "tablet_camera"), label: String(camera.label || ""), view_angle: String(camera.view_angle || "front"), device_id: String(camera.device_id || ""), enabled: camera.enabled !== false })),
+        overall_score: 0, focus: String(body.focus || "free_training"), feedback_report: "",
+        created_by: user.id, request_id: body.request_id ?? null,
       };
+      const previous = session.request_id && database.sessions.find(item => item.created_by === user.id && item.request_id === session.request_id);
+      if (previous) {
+        if (previous.user_id !== session.user_id || previous.focus !== session.focus || JSON.stringify(previous.camera_config) !== JSON.stringify(session.camera_config)) return errorResponse("request_id already used for another request", 409);
+        return jsonResponse({ session: previous });
+      }
       database.sessions.unshift(session);
       saveDatabase(database);
       return jsonResponse({ session }, 201);
@@ -289,9 +313,7 @@
     if (method === "PATCH" && endSessionMatch) {
       const session = database.sessions.find((item) => item.id === endSessionMatch[1]);
       if (!session || session.gym_id !== user.gym_id || (user.role !== "OWNER" && session.user_id !== user.id)) return errorResponse("session not found", 404);
-      session.ended_at = nowSeconds();
-      session.overall_score = Math.max(0, Math.min(100, Number(body.overall_score || 0)));
-      session.feedback_report = String(body.feedback_report || "");
+      session.ended_at ||= nowSeconds();
       saveDatabase(database);
       return jsonResponse({ session });
     }
@@ -309,23 +331,6 @@
       }
     }
 
-    if (method === "POST" && path === "/calibration/human") {
-      const cameras = (body.camera_config || []).map((camera) => ({ ...camera, calibrated: true, calibration_status: "ready", calibrated_at: nowSeconds() }));
-      const height = Number(body.body_profile?.height_cm || 0);
-      const calibration = {
-        status: "calibrated", ready: true, sample_count: Number(body.samples?.length || 0), camera_count: cameras.length,
-        cameras, body_scale: height ? { height_cm: height, estimated_reach_cm: Math.round(height * 1.01), scale_source: "tablet_single_camera" } : {}, errors: [],
-      };
-      return jsonResponse({ calibration });
-    }
-
-    if (method === "POST" && path === "/pose/3d") {
-      return jsonResponse({ pose: { session_id: body.session_id || "", status: "single_camera_2d", pose_space: "image_2d", keypoints_3d: [] } });
-    }
-
-    if (method === "GET" && path === "/system/pose3d") {
-      return jsonResponse({ opencv: { available: false }, platform: "android", max_cameras: 1, pose_space: "image_2d" });
-    }
 
     if (method === "POST" && path === "/recordings/convert") {
       return errorResponse("MP4 conversion is unavailable on this device", 501);
@@ -337,7 +342,9 @@
   window.fetch = function androidOfflineFetch(input, options = {}) {
     const url = new URL(typeof input === "string" ? input : input.url, window.location.origin);
     if (url.origin === window.location.origin && url.pathname.startsWith("/api/")) {
-      return routeApi(url, options);
+      const response = pendingApi.then(() => routeApi(url, options)).catch(() => errorResponse("로컬 데이터를 처리하지 못했습니다. 기존 데이터를 보존한 상태로 복구가 필요합니다.", 503));
+      pendingApi = response.then(() => undefined);
+      return response;
     }
     return originalFetch(input, options);
   };

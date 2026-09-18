@@ -22,6 +22,21 @@ class FakeGateway(SupabaseGateway):
 
 
 class CentralGatewayTests(unittest.TestCase):
+    def test_missing_resource_ids_return_not_found_without_remote_calls(self):
+        gateway = FakeGateway([])
+        for path in ("/api/members/", "/api/sessions/", "/api/sessions//end"):
+            with self.assertRaises(CentralGatewayError) as caught:
+                gateway.route("GET", path, {}, "", "Bearer access")
+            self.assertEqual(caught.exception.status, 404)
+        self.assertEqual(gateway.calls, [])
+
+    def test_logout_revokes_refresh_sessions_then_access_tokens(self):
+        gateway = FakeGateway([None, None])
+        self.assertEqual(gateway.logout("access"), {"logged_out": True})
+        self.assertEqual([call[1] for call in gateway.calls], ["/auth/v1/logout", "/rest/v1/rpc/revoke_own_access_tokens"])
+        self.assertEqual(gateway.calls[0][2]["query"], {"scope": "global"})
+        self.assertTrue(all(call[2]["token"] == "access" for call in gateway.calls))
+
     def test_local_mode_does_not_require_supabase_configuration(self):
         with patch.dict(os.environ, {"BOXING_COACH_DATA_MODE": "local"}, clear=True):
             self.assertIsNone(CentralGatewayConfig.from_environment())
@@ -31,12 +46,46 @@ class CentralGatewayTests(unittest.TestCase):
             with self.assertRaises(RuntimeError):
                 CentralGatewayConfig.from_environment()
 
-    def test_local_ai_routes_stay_on_the_desktop_worker(self):
+    def test_retired_analysis_routes_are_not_handled(self):
         self.assertFalse(SupabaseGateway.handles("POST", "/api/pose/3d"))
         self.assertFalse(SupabaseGateway.handles("POST", "/api/calibration/human"))
         self.assertTrue(SupabaseGateway.handles("GET", "/api/members"))
         self.assertTrue(SupabaseGateway.handles("GET", "/api/features"))
         self.assertTrue(SupabaseGateway.handles("GET", "/api/admin/centers"))
+
+    def test_session_end_uses_idempotent_rpc_and_ignores_analysis(self):
+        gateway = FakeGateway([[{"id": "session-id", "user_id": "user-id", "center_id": "center-id", "feedback_report": {"summary": "legacy"}, "overall_score": 82}]])
+        gateway.end_session("access", "session-id", {"overall_score": 99, "feedback_report": "new feedback"})
+        self.assertEqual(gateway.calls[0][1], "/rest/v1/rpc/end_training_session")
+        self.assertEqual(gateway.calls[0][2]["body"], {"p_session_id": "session-id"})
+
+    def test_session_start_passes_stable_request_key_to_rls_rpc(self):
+        gateway = FakeGateway([[{"id": "session-id", "user_id": "user-id", "center_id": "center-id"}]])
+        with patch.object(gateway, "_account_for_token", return_value={"id": "user-id"}):
+            result = gateway.create_session("access", {"request_id": "stable-key", "camera_config": [], "overall_score": 99})
+        self.assertEqual(result["session"]["id"], "session-id")
+        self.assertEqual(gateway.calls[0][1], "/rest/v1/rpc/start_training_session")
+        self.assertEqual(gateway.calls[0][2]["body"], {
+            "p_user_id": "user-id", "p_camera_config": [{"camera_id": "cam_front_01", "label": "", "view_angle": "front", "device_id": "", "enabled": True}],
+            "p_focus": "free_training", "p_request_id": "stable-key",
+        })
+
+    def test_session_request_validation_does_not_send_invalid_writes(self):
+        for body in ({"request_id": []}, {"request_id": ""}, {"focus": 123}):
+            gateway = FakeGateway([])
+            with patch.object(gateway, "_account_for_token", return_value={"id": "user-id"}):
+                with self.assertRaises(CentralGatewayError) as context:
+                    gateway.create_session("access", body)
+            self.assertEqual(context.exception.status, 400)
+            self.assertEqual(gateway.calls, [])
+
+    def test_member_calibration_route_is_removed(self):
+        gateway = FakeGateway([])
+        for method in ("GET", "POST"):
+            with self.assertRaises(CentralGatewayError) as context:
+                gateway._route_member(method, "/api/members/profile-id/calibration", {}, "access")
+            self.assertEqual(context.exception.status, 404)
+        self.assertEqual(gateway.calls, [])
 
     def test_public_center_owner_signup_is_rejected_in_central_mode(self):
         gateway = FakeGateway([])
@@ -105,43 +154,6 @@ class CentralGatewayTests(unittest.TestCase):
         self.assertEqual(session["ended_at"] - session["started_at"], 60)
         self.assertEqual(session["feedback_report"], '{"summary": "good"}')
 
-    def test_calibration_is_saved_through_guarded_rpc(self):
-        gateway = FakeGateway(
-            [
-                [
-                    {
-                        "id": "calibration-id",
-                        "profile_id": "profile-id",
-                        "user_id": "user-id",
-                        "center_id": "center-id",
-                        "status": "calibrated",
-                        "completed": True,
-                        "completed_at": "2026-07-20T12:00:00+00:00",
-                        "sample_count": 10,
-                        "estimated_reach_cm": 178,
-                        "camera_config": [],
-                        "body_scale": {},
-                        "calibration": {},
-                    }
-                ],
-                [
-                    {
-                        "id": "profile-id",
-                        "user_id": "user-id",
-                        "center_id": "center-id",
-                        "name": "Member",
-                        "accounts": {"username": "member1", "role": "MEMBER", "status": "ACTIVE"},
-                    }
-                ],
-            ]
-        )
-
-        payload = gateway.save_calibration(
-            "access", "profile-id", {"ready": True, "status": "calibrated"}
-        )
-
-        self.assertEqual(payload["calibration"]["estimated_reach_cm"], 178)
-        self.assertEqual(gateway.calls[0][1], "/rest/v1/rpc/save_member_calibration")
 
     def test_platform_center_overview_uses_guarded_rpc(self):
         gateway = FakeGateway(

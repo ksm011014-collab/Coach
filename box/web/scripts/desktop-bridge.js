@@ -45,8 +45,11 @@ const desktopBridge = (() => {
       if (Number(platform.bridgeProtocol) !== 1) {
         throw new Error("웹과 Windows 앱의 연결 버전이 맞지 않습니다. Windows 앱을 업데이트하세요.");
       }
-      if (!versionAtLeast(platform.engineVersion || "0.0.0", "0.2.0")) {
-        throw new Error("로컬 AI 엔진 버전이 오래되었습니다. Windows 앱을 업데이트하세요.");
+      if (platform.workerAvailable === false) {
+        throw new Error("로컬 worker의 상태를 확인하지 못했습니다. Windows 앱을 다시 시작해주세요.");
+      }
+      if (!versionAtLeast(platform.engineVersion || "0.0.0", "0.3.0") || platform.capabilities?.contract_version !== 1) {
+        throw new Error("로컬 엔진 버전이 오래되었습니다. Windows 앱을 업데이트하세요.");
       }
       return platform;
     },
@@ -54,9 +57,6 @@ const desktopBridge = (() => {
 })();
 
 const DESKTOP_LOCAL_API_PATHS = new Set([
-  "/system/pose3d",
-  "/pose/3d",
-  "/calibration/human",
   "/recordings/convert",
 ]);
 

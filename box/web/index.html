@@ -9,6 +9,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icons/app-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/styles/operations.css">
   </head>
   <body>
     <div id="app" class="shell auth-shell">
@@ -39,11 +40,11 @@
               <span></span>
             </div>
             <p class="eyebrow hero-brand">선랑 제이디씨</p>
-            <h1 class="hero-title"><span>AI 동작·음성 교차 검증 기반</span><span>에듀·스포츠 B2B SaaS</span></h1>
+            <h1 class="hero-title"><span>센터와 회원의 운동 기록 관리</span><span>에듀·스포츠 B2B SaaS</span></h1>
             <div class="hero-status" aria-hidden="true">
-              <span>POSE SIGNAL</span>
-              <span>VOICE CHECK</span>
-              <span>COACHING AI</span>
+              <span>CAMERA</span>
+              <span>SESSION</span>
+              <span>RECORDING</span>
             </div>
           </div>
 
@@ -72,35 +73,15 @@
         <section id="hud" class="hud hidden">
           <video id="cameraPreview" class="hud-camera" autoplay muted playsinline></video>
           <div class="camera-fallback hud-camera" id="cameraFallback">LIVE CAMERA</div>
-          <canvas id="skeletonCanvas"></canvas>
           <div id="cameraMiniOverlay" class="camera-mini-overlay hidden" aria-label="Additional camera views"></div>
           <div id="cameraOffline" class="camera-offline">
             <strong>카메라 연결 안됨</strong>
-            <span>실시간 코칭을 시작하려면 카메라 권한을 허용하고 장치를 연결하세요.</span>
+            <span>운동 세션을 시작하려면 카메라 권한을 허용하고 장치를 연결하세요.</span>
             <button id="retryCamera">카메라 연결</button>
           </div>
-          <div class="scanlines"></div>
-          <div class="corner corner-tl"></div>
-          <div class="corner corner-tr"></div>
-          <div class="corner corner-bl"></div>
-          <div class="corner corner-br"></div>
-
-          <article class="overlay target-card">
-            <span>수행 동작</span>
-            <strong id="targetAction">가드 준비</strong>
-            <small id="cameraStatus">카메라 대기</small>
-          </article>
-
-          <article class="overlay score-card">
-            <span>점수</span>
-            <strong id="scoreValue">--</strong>
-            <small id="confidenceValue">confidence --</small>
-          </article>
-
-          <article class="overlay feedback-card">
-            <span>AI 피드백</span>
-            <p id="feedbackText">실시간 세션을 시작하면 포즈 분석 이벤트가 표시됩니다.</p>
-            <div id="feedbackLog" class="feedback-log"></div>
+          <article class="overlay camera-status-card">
+            <span id="cameraStatus">카메라 대기</span>
+            <p id="sessionMessage" role="status">분석 엔진 준비 중 · 카메라와 운동 기록을 사용할 수 있습니다.</p>
           </article>
 
           <article class="overlay session-card">
@@ -132,6 +113,11 @@
       </div>
       <button id="applyWebUpdate" type="button">업데이트</button>
     </aside>
+    <script src="/scripts/operations-service.js"></script>
+    <script src="/scripts/operations-ui.js"></script>
+    <script src="/scripts/operations-commerce.js"></script>
+    <script src="/scripts/operations-shell.js"></script>
+    <script src="/scripts/operations-live.js"></script>
     <script src="/scripts/android-offline.js"></script>
     <script src="/scripts/desktop-bridge.js"></script>
     <script src="/scripts/config.js"></script>
@@ -139,15 +125,12 @@
     <script src="/scripts/utils.js"></script>
     <script src="/scripts/auth-shell.js"></script>
     <script src="/scripts/member-home.js"></script>
-    <script src="/scripts/dashboard.js"></script>
-    <script src="/scripts/members.js"></script>
     <script src="/scripts/accounts.js"></script>
     <script src="/scripts/platform-admin.js"></script>
     <script src="/scripts/preferences.js"></script>
     <script src="/scripts/business.js"></script>
-    <script src="/scripts/attendance.js"></script>
-    <script src="/scripts/feedback.js"></script>
-    <script src="/scripts/session-pose.js"></script>
+    <script src="/scripts/center.js"></script>
+    <script src="/scripts/session.js"></script>
     <script src="/app.js"></script>
     <script src="/scripts/pwa.js"></script>
   </body>

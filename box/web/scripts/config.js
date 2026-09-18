@@ -1,97 +1,23 @@
 const SETTINGS_KEY = "boxing_settings";
 const CENTER_KEY = "boxing_center_profile";
-const STAFF_KEY = "boxing_staff";
 const CAMERA_SETUP_KEY = "boxing_camera_setup";
-const MEMBER_CALIBRATION_KEY = "boxing_member_calibrations";
-
-const FEEDBACK_WINDOW_MS = 5000;
-const MOTION_EVENT_COOLDOWN_MS = 700;
-const INSTRUCTION_MIN_HOLD_MS = 1200;
-const INSTRUCTION_CONFIRM_SCORE = 68;
-const SINGLE_CAMERA_PUNCH_THRESHOLD = 52;
-const SINGLE_CAMERA_PUNCH_MARGIN = 6;
-const TWO_CAMERA_PUNCH_THRESHOLD = 58;
-const TWO_CAMERA_PUNCH_MARGIN = 9;
-const ACTION_TYPES = [
-  ["jab", "잽"],
-  ["right", "라이트"],
-  ["oneTwo", "원투"],
-  ["hook", "훅"],
-  ["upper", "어퍼"],
-  ["duck", "더킹"],
-  ["weave", "위빙"],
-];
-
-const LEVEL_ACTIONS = {
-  1: [
-    { text: "기본 자세/스텝, 잽 + 제자리 공격 3가지", checks: ["jab"], required: 1 },
-    { text: "왼손 잽", checks: ["jab"], required: 1 },
-    { text: "원투", checks: ["jab", "right"], required: 2 },
-    { text: "원투 백 스텝(B) 원투", checks: ["jab", "right"], required: 2 },
-    { text: "잽 잽 투", checks: ["jab", "right"], required: 2 },
-    { text: "원투 B 원투 훅 M", checks: ["jab", "right", "hook"], required: 2 },
-    { text: "잽 B 원투 M", checks: ["jab", "right"], required: 2 },
-    { text: "잽 잽 훅 원투 B 원투 M", checks: ["jab", "right", "hook"], required: 3 },
-  ],
-  2: [
-    { text: "훅", checks: ["hook"], required: 1 },
-    { text: "원투 훅", checks: ["jab", "right", "hook"], required: 2 },
-    { text: "원투 B 원투 훅 훅", checks: ["jab", "right", "hook"], required: 3 },
-    { text: "잽 잽 훅 훅", checks: ["jab", "hook"], required: 2 },
-    { text: "원투 훅 훅 B 원투 M", checks: ["jab", "right", "hook"], required: 3 },
-    { text: "원투 라이트 B 잽 잽 훅 훅 M", checks: ["jab", "right", "hook"], required: 3 },
-    { text: "원투 훅 훅 원투 M", checks: ["jab", "right", "hook"], required: 3 },
-    { text: "원투 훅 훅 훅 M", checks: ["jab", "right", "hook"], required: 3 },
-    { text: "원투 3회 훅 훅 3회 M", checks: ["jab", "right", "hook"], required: 3 },
-  ],
-  3: [
-    { text: "어퍼", checks: ["upper"], required: 1 },
-    { text: "원투 어퍼 어퍼", checks: ["jab", "right", "upper"], required: 2 },
-    { text: "원투 B 원투 어퍼 어퍼", checks: ["jab", "right", "upper"], required: 3 },
-    { text: "잽 잽 훅 어퍼 어퍼", checks: ["jab", "hook", "upper"], required: 3 },
-    { text: "원투 어퍼 어퍼 훅 훅 M", checks: ["jab", "right", "upper", "hook"], required: 3 },
-    { text: "원투 어퍼 어퍼 훅 훅 훅 M", checks: ["jab", "right", "upper", "hook"], required: 3 },
-    { text: "잽 B 원투 들어와 훅 훅 어퍼 어퍼 훅 M", checks: ["jab", "right", "hook", "upper"], required: 3 },
-    { text: "잽 B 원투 어퍼 훅 훅 훅 어퍼 훅 M", checks: ["jab", "right", "upper", "hook"], required: 3 },
-    { text: "원투 잽 훅 훅 훅 원투 B 원투 M", checks: ["jab", "right", "hook"], required: 3 },
-  ],
-  4: [
-    { text: "더킹", checks: ["duck"], required: 1 },
-    { text: "원투 더킹 더킹 원투", checks: ["jab", "right", "duck"], required: 2 },
-    { text: "원투 더킹 훅 훅 더킹 원투 M", checks: ["jab", "right", "duck", "hook"], required: 3 },
-    { text: "잽 잽 투 더킹 훅 훅 더킹 원투 B 원투 M", checks: ["jab", "right", "duck", "hook"], required: 3 },
-    { text: "위빙", checks: ["weave"], required: 1 },
-    { text: "원투 훅 위빙 위빙 훅 훅", checks: ["jab", "right", "hook", "weave"], required: 3 },
-    { text: "원투 훅 위빙 훅 훅 위빙 훅 훅", checks: ["jab", "right", "hook", "weave"], required: 3 },
-    { text: "원투 더킹 훅 위빙 훅 훅 위빙 훅 훅 B 원투 M", checks: ["jab", "right", "duck", "hook", "weave"], required: 3 },
-    { text: "잽 B 원투 더킹 두 번 위빙 훅 훅 어퍼 훅 훅 M", checks: ["jab", "right", "duck", "weave", "hook", "upper"], required: 3 },
-  ],
-  5: [
-    { text: "잽 잽 원투 더킹 훅 위빙 훅 훅 M", checks: ["jab", "right", "duck", "hook", "weave"], required: 3 },
-    { text: "원투 훅 어퍼 더킹 원투 훅 M", checks: ["jab", "right", "hook", "upper", "duck"], required: 3 },
-    { text: "잽 B 원투 위빙 훅 어퍼 훅 훅 M", checks: ["jab", "right", "weave", "hook", "upper"], required: 3 },
-    { text: "원투 3회 더킹 위빙 훅 훅 어퍼 M", checks: ["jab", "right", "duck", "weave", "hook", "upper"], required: 3 },
-    { text: "프리 콤비네이션 30초 (스텝 포함)", checks: ["jab", "right", "hook", "upper", "duck", "weave"], required: 3 },
-    { text: "잽 더블 원투 훅 더킹 어퍼 훅 M", checks: ["jab", "right", "hook", "duck", "upper"], required: 3 },
-    { text: "원투 훅 훅 위빙 원투 더킹 훅 M", checks: ["jab", "right", "hook", "weave", "duck"], required: 3 },
-    { text: "압박 스텝 원투 훅 어퍼 훅 훅 M", checks: ["jab", "right", "hook", "upper"], required: 3 },
-    { text: "회피 후 카운터 (더킹/위빙 + 원투 훅)", checks: ["duck", "weave", "jab", "right", "hook"], required: 3 },
-  ],
-};
-
 const navItems = [
-  ["coach", "실시간 코칭"],
+  ["coach", "운동 세션"],
   ["dashboard", "대시보드"],
   ["center", "센터 정보"],
   ["members", "회원 관리"],
   ["staff", "직원"],
+  ["memberships", "회원권"],
   ["attendance", "출석"],
+  ["payments", "수납"],
+  ["workouts", "운동 기록"],
   ["settings", "설정"],
 ];
 
 const memberNavItems = [
-  ["coach", "실시간 코칭"],
-  ["memberWorkouts", "운동 현황"],
+  ["coach", "운동 세션"],
+  ["memberHome", "내 이용 현황"],
+  ["memberWorkouts", "운동 기록"],
   ["memberAttendance", "출석"],
   ["memberProfile", "정보 변경"],
   ["settings", "설정"],
@@ -99,7 +25,7 @@ const memberNavItems = [
 
 const platformAdminNavItems = [
   ["platformOps", "중앙 관제"],
-  ["coach", "실시간 코칭"],
+  ["coach", "운동 세션"],
   ["dashboard", "대시보드"],
   ["accounts", "계정 권한"],
   ["members", "전체 회원"],
@@ -107,20 +33,26 @@ const platformAdminNavItems = [
 ];
 
 const centerOwnerNavItems = [
-  ["coach", "실시간 코칭"],
+  ["coach", "운동 세션"],
   ["dashboard", "대시보드"],
   ["center", "센터 정보"],
   ["members", "회원 관리"],
   ["accounts", "계정 권한"],
+  ["memberships", "회원권"],
   ["attendance", "출석"],
+  ["payments", "수납"],
+  ["workouts", "운동 기록"],
   ["settings", "설정"],
 ];
 
 const coachNavItems = [
-  ["coach", "실시간 코칭"],
+  ["coach", "운동 세션"],
   ["dashboard", "대시보드"],
   ["members", "회원 관리"],
+  ["memberships", "회원권"],
   ["attendance", "출석"],
+  ["payments", "수납"],
+  ["workouts", "운동 기록"],
   ["settings", "설정"],
 ];
 
@@ -222,5 +154,3 @@ const authDefaults = {
 };
 
 const $ = (selector) => document.querySelector(selector);
-const MEDIAPIPE_TASKS_BASE = "/vendor/mediapipe";
-const MEDIAPIPE_POSE_MODEL = `${MEDIAPIPE_TASKS_BASE}/pose_landmarker_lite.task`;

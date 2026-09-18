@@ -1,4 +1,8 @@
 project_id = "boxing-coach"
 
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/custom_access_token_hook"
+
 [functions.admin-create-user]
 verify_jwt = true

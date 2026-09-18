@@ -1,6 +1,6 @@
 # Central account and data plane
 
-BoxingCoach keeps camera capture, MediaPipe, OpenCV, and recordings on the Windows PC. Supabase stores identity, account status, roles, centers, subscriptions, feature flags, member profiles, calibrations, session summaries, and administrative audit events.
+BoxingCoach keeps camera capture and recordings on the customer device. The previous analysis engine and its application endpoints have been removed. Supabase stores identity, account status, roles, centers, subscriptions, feature flags, member profiles, legacy calibration data, session summaries, and administrative audit events.
 
 ## Security model
 
@@ -84,3 +84,7 @@ The export file contains personal information and must be encrypted at rest, sha
 - Confirm direct public signup cannot create a `CENTER_OWNER`; create one through the platform account console instead.
 - Review `account_audit_logs` after role/status changes and `audit_logs` after center, subscription, feature, and account administration.
 - Back up PostgreSQL according to the selected Supabase plan and test restore procedures before launch.
+
+## Retired analysis data
+
+The application no longer reads or writes calibration records or produces scores and feedback. Existing tables, RLS policies, RPC definitions, and historical migrations remain intact for data preservation. Direct database access from older clients is not revoked by this source-only change. Follow the staging/backup/approval plan in [engine removal](../docs/ENGINE_REMOVAL.md) before retiring those database interfaces or dropping any data.

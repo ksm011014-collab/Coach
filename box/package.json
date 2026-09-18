@@ -1,0 +1,8 @@
+{
+  "name": "boxingcoach-development",
+  "private": true,
+  "description": "Development-only browser test dependencies; the application uses vanilla JavaScript.",
+  "devDependencies": {
+    "playwright": "1.62.1"
+  }
+}

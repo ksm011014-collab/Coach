@@ -1,6 +1,5 @@
 const PLATFORM_FEATURE_PRESETS = [
   ["web.beta", "새 웹 화면 시험 사용"],
-  ["ai.multicamera", "다중 카메라 AI 분석"],
   ["pwa.enabled", "웹앱 설치 기능"],
 ];
 
@@ -114,6 +113,7 @@ function platformFeatureFlags(center) {
   const flags = new Map(state.platformFeatureFlags.map((flag) => [flag.flag_key, flag]));
   return `<section class="platform-feature-panel">
     <div class="section-heading"><div><span>기능 배포 관리</span><h3>체육관별 기능 설정</h3></div></div>
+    <p>현재 설정은 저장만 지원합니다. 웹 화면과 설치 가능 여부에는 아직 적용되지 않습니다.</p>
     <div class="platform-feature-list">${PLATFORM_FEATURE_PRESETS.map(([key, label]) => {
       const flag = flags.get(key) || { flag_key: key, enabled: false, rollout_channel: "STABLE" };
       return `<form class="platform-feature-row" data-feature-key="${key}">

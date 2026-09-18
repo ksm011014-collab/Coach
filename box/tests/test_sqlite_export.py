@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 
 from backend.domain import Store
+from fixtures import populated_store
 from tools.export_sqlite_bundle import export_bundle
 
 
@@ -10,7 +11,7 @@ class SqliteExportTests(unittest.TestCase):
     def test_export_omits_password_hashes_and_decodes_json(self):
         with tempfile.TemporaryDirectory() as directory:
             database = Path(directory) / "boxing_coach.db"
-            store = Store(database)
+            store = populated_store(database)
             store.conn.close()
 
             bundle = export_bundle(database)

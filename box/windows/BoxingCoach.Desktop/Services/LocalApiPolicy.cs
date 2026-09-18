@@ -7,9 +7,6 @@ internal static class LocalApiPolicy
     private static readonly IReadOnlyDictionary<string, string> AllowedMethods =
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["/system/pose3d"] = "GET",
-            ["/pose/3d"] = "POST",
-            ["/calibration/human"] = "POST",
             ["/recordings/convert"] = "POST",
         };
 

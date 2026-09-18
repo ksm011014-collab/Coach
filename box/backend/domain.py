@@ -11,11 +11,34 @@ import secrets
 import sqlite3
 import threading
 import time
+import binascii
+import math
+from contextlib import contextmanager
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
+try:
+    from profile_input import validate_profile_patch
+except ModuleNotFoundError:
+    from backend.profile_input import validate_profile_patch
+
 
 SECRET = os.environ.get("BOXING_COACH_TOKEN_SECRET") or secrets.token_urlsafe(48)
+SCHEMA_VERSION = 1
+ROLES = {"OWNER", "PLATFORM_ADMIN", "CENTER_OWNER", "COACH", "MEMBER"}
+
+
+class MigrationRequired(RuntimeError):
+    pass
+
+
+def locked(method):
+    @wraps(method)
+    def run(self, *args, **kwargs):
+        with self.lock:
+            return method(self, *args, **kwargs)
+    return run
 
 
 @dataclasses.dataclass
@@ -34,6 +57,8 @@ class User:
     password_hash: str
     role: str
     name: str
+    status: str = "ACTIVE"
+    token_version: int = 1
 
 
 @dataclasses.dataclass
@@ -54,22 +79,6 @@ class MemberProfile:
 
 
 @dataclasses.dataclass
-class MemberCalibration:
-    id: str
-    profile_id: str
-    user_id: str
-    gym_id: str
-    status: str
-    completed: bool
-    completed_at: float
-    sample_count: int
-    estimated_reach_cm: int
-    camera_config: list[dict[str, Any]]
-    body_scale: dict[str, Any]
-    calibration: dict[str, Any]
-
-
-@dataclasses.dataclass
 class TrainingSession:
     id: str
     user_id: str
@@ -80,6 +89,8 @@ class TrainingSession:
     overall_score: int
     focus: str
     feedback_report: str = ""
+    created_by: str = ""
+    request_id: str | None = None
 
 
 @dataclasses.dataclass
@@ -99,43 +110,65 @@ class Store:
         self.lock = threading.RLock()
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
-        self.migrate()
-        self.seed()
+        version = self.conn.execute("pragma user_version").fetchone()[0]
+        existing = self.conn.execute("select 1 from sqlite_master where type = 'table'").fetchone()
+        if existing and version != SCHEMA_VERSION:
+            self.conn.close()
+            raise MigrationRequired("Database migration required; stop the worker and use tools/migrate_sqlite.py with an explicit backup and approval.")
+        if not existing:
+            self.migrate()
+        self.conn.execute("pragma foreign_keys = on")
+        self.conn.execute("pragma busy_timeout = 5000")
+
+    @contextmanager
+    def transaction(self):
+        """Nested savepoints keep multi-record operations atomic on the shared connection."""
+        with self.lock:
+            name = "tx_" + secrets.token_hex(8)
+            self.conn.execute(f"savepoint {name}")
+            try:
+                yield
+            except BaseException:
+                self.conn.execute(f"rollback to {name}")
+                self.conn.execute(f"release {name}")
+                raise
+            else:
+                self.conn.execute(f"release {name}")
 
     @property
+    @locked
     def gyms(self) -> dict[str, Gym]:
         rows = self.conn.execute("select * from gyms").fetchall()
         return {row["id"]: gym_from_row(row) for row in rows}
 
     @property
+    @locked
     def users(self) -> dict[str, User]:
         rows = self.conn.execute("select * from users").fetchall()
         return {row["id"]: user_from_row(row) for row in rows}
 
     @property
+    @locked
     def profiles(self) -> dict[str, MemberProfile]:
         rows = self.conn.execute("select * from member_profiles").fetchall()
         return {row["id"]: profile_from_row(row) for row in rows}
 
-    @property
-    def calibrations(self) -> dict[str, MemberCalibration]:
-        rows = self.conn.execute("select * from member_calibrations").fetchall()
-        return {row["profile_id"]: calibration_from_row(row) for row in rows}
 
     @property
+    @locked
     def sessions(self) -> dict[str, TrainingSession]:
         rows = self.conn.execute("select * from training_sessions order by started_at desc").fetchall()
         return {row["id"]: session_from_row(row) for row in rows}
 
     @property
+    @locked
     def labels(self) -> dict[str, CoachLabel]:
         rows = self.conn.execute("select * from coach_labels order by created_at desc").fetchall()
         return {row["id"]: label_from_row(row) for row in rows}
 
     def migrate(self) -> None:
-        with self.lock, self.conn:
-            self.conn.executescript(
-                """
+        with self.transaction():
+            schema = """
                 create table if not exists gyms (
                     id text primary key,
                     name text not null,
@@ -148,7 +181,7 @@ class Store:
                     username text not null unique,
                     email text not null default '',
                     password_hash text not null,
-                    role text not null check (role in ('OWNER', 'MEMBER')),
+                    role text not null check (role in ('OWNER', 'PLATFORM_ADMIN', 'CENTER_OWNER', 'COACH', 'MEMBER')),
                     name text not null,
                     foreign key (gym_id) references gyms(id)
                 );
@@ -215,10 +248,14 @@ class Store:
                     foreign key (owner_id) references users(id)
                 );
                 """
-            )
+            for statement in schema.split(";"):
+                if statement.strip():
+                    self.conn.execute(statement)
             self.ensure_column("users", "username", "text")
             self.ensure_column("gyms", "code", "text not null default ''")
             self.ensure_column("users", "email", "text not null default ''")
+            self.ensure_column("users", "status", "text not null default 'ACTIVE' check (status in ('ACTIVE', 'SUSPENDED'))")
+            self.ensure_column("users", "token_version", "integer not null default 1 check (token_version > 0)")
             self.ensure_column("member_profiles", "phone", "text not null default ''")
             self.ensure_column("member_profiles", "birthdate", "text not null default ''")
             self.ensure_column("member_profiles", "gender", "text not null default ''")
@@ -229,10 +266,18 @@ class Store:
             self.ensure_column("member_profiles", "injury_note", "text not null default ''")
             self.ensure_column("member_profiles", "training_level", "integer not null default 1")
             self.ensure_column("training_sessions", "feedback_report", "text not null default ''")
+            self.ensure_column("training_sessions", "created_by", "text not null default ''")
+            self.ensure_column("training_sessions", "request_id", "text")
+            self.conn.execute("create unique index if not exists idx_session_request on training_sessions(created_by, request_id) where request_id is not null")
+            self.conn.execute("""create table if not exists account_audit_logs (
+                id text primary key, actor_id text not null references users(id),
+                target_id text not null references users(id), gym_id text not null references gyms(id),
+                action text not null, before_state text not null, after_state text not null, created_at real not null)""")
             self.backfill_usernames()
             self.backfill_gym_codes()
             self.conn.execute("create unique index if not exists idx_users_username on users(username)")
             self.conn.execute("create unique index if not exists idx_gyms_code on gyms(code)")
+            self.conn.execute(f"pragma user_version = {SCHEMA_VERSION}")
 
     def ensure_column(self, table: str, column: str, definition: str) -> None:
         columns = [row["name"] for row in self.conn.execute(f"pragma table_info({table})").fetchall()]
@@ -260,32 +305,7 @@ class Store:
                 code = f"{code}{index}"
             self.conn.execute("update gyms set code = ? where id = ?", (code, row["id"]))
 
-    def seed(self) -> None:
-        with self.lock, self.conn:
-            self.conn.execute(
-                "insert or ignore into gyms (id, name, code) values (?, ?, ?)",
-                ("gym_apex", "APEX Boxing Lab", "apex"),
-            )
-        owner = self.find_user_by_username("owner")
-        if owner is None:
-            owner = self.create_user("owner", "Owner!123", "OWNER", "김관리자", "gym_apex")
-            self.create_profile(owner, "010-0000-0001", "1985-01-01", "male")
-        else:
-            self.update_seed_password(owner, "Owner!123")
-        member = self.find_user_by_username("member")
-        if member is None:
-            member = self.create_user("member", "Member!123", "MEMBER", "이회원", "gym_apex")
-            self.create_profile(member, "010-0000-0002", "1995-01-01", "female")
-        else:
-            self.update_seed_password(member, "Member!123")
-
-    def update_seed_password(self, user: User, password: str) -> None:
-        with self.lock, self.conn:
-            self.conn.execute(
-                "update users set password_hash = ? where id = ?",
-                (hash_password(password), user.id),
-            )
-
+    @locked
     def find_user_by_username(self, username: str) -> User | None:
         row = self.conn.execute(
             "select * from users where lower(username) = lower(?)",
@@ -293,14 +313,17 @@ class Store:
         ).fetchone()
         return user_from_row(row) if row else None
 
+    @locked
     def find_user_by_email(self, email: str) -> User | None:
         row = self.conn.execute("select * from users where lower(email) = lower(?)", (email.lower(),)).fetchone()
         return user_from_row(row) if row else None
 
+    @locked
     def get_user(self, user_id: str) -> User | None:
         row = self.conn.execute("select * from users where id = ?", (user_id,)).fetchone()
         return user_from_row(row) if row else None
 
+    @locked
     def find_gym_by_code(self, code: str) -> Gym | None:
         row = self.conn.execute(
             "select * from gyms where lower(code) = lower(?)",
@@ -308,7 +331,10 @@ class Store:
         ).fetchone()
         return gym_from_row(row) if row else None
 
+    @locked
     def create_gym(self, name: str, code: str = "") -> Gym:
+        if not isinstance(name, str) or not 1 <= len(name.strip()) <= 100:
+            raise ValueError("center name must be 1 to 100 characters")
         name = name.strip()
         if not name:
             raise ValueError("center name is required")
@@ -318,20 +344,27 @@ class Store:
         while self.find_gym_by_code(code) is not None:
             code = f"{code}{secrets.token_hex(1)}"
         gym = Gym(id=f"gym_{secrets.token_hex(4)}", name=name, code=code)
-        with self.lock, self.conn:
+        with self.transaction():
             self.conn.execute(
                 "insert into gyms (id, name, code) values (?, ?, ?)",
                 (gym.id, gym.name, gym.code),
             )
         return gym
 
+    @locked
     def create_user(self, username: str, password: str, role: str, name: str, gym_id: str, email: str = "") -> User:
+        if not all(isinstance(value, str) for value in (username, password, role, name, gym_id, email)):
+            raise ValueError("account fields must be strings")
+        if not 1 <= len(name.strip()) <= 100 or len(email) > 254:
+            raise ValueError("invalid account name or email length")
         username = normalize_username(username)
         email = email.strip().lower()
         validate_username(username)
         validate_password(password)
-        if role not in {"OWNER", "MEMBER"}:
-            raise ValueError("role must be OWNER or MEMBER")
+        if role not in ROLES:
+            raise ValueError("unsupported account role")
+        if not self.conn.execute("select 1 from gyms where id = ?", (gym_id,)).fetchone():
+            raise ValueError("center not found")
         if self.find_user_by_username(username) is not None:
             raise ValueError("username already exists")
         if email and self.find_user_by_email(email) is not None:
@@ -345,7 +378,7 @@ class Store:
             role=role,
             name=name,
         )
-        with self.lock, self.conn:
+        with self.transaction():
             self.conn.execute(
                 """
                 insert into users (id, gym_id, username, email, password_hash, role, name)
@@ -383,10 +416,10 @@ class Store:
             injury_note=injury_note,
             training_level=normalize_training_level(training_level),
         )
-        with self.lock, self.conn:
+        with self.transaction():
             self.conn.execute(
                 """
-                insert or replace into member_profiles
+                insert into member_profiles
                 (id, user_id, gym_id, name, phone, birthdate, gender, height_cm, weight_kg, reach_cm, stance, injury_note, training_level)
                 values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
@@ -408,17 +441,19 @@ class Store:
             )
         return profile
 
+    @locked
     def profile_for_user(self, user_id: str) -> MemberProfile | None:
         row = self.conn.execute("select * from member_profiles where user_id = ?", (user_id,)).fetchone()
         return profile_from_row(row) if row else None
 
+    @locked
     def get_profile(self, profile_id: str) -> MemberProfile | None:
         row = self.conn.execute("select * from member_profiles where id = ?", (profile_id,)).fetchone()
         return profile_from_row(row) if row else None
 
     def update_profile(self, profile: MemberProfile) -> MemberProfile:
         profile = dataclasses.replace(profile, training_level=normalize_training_level(profile.training_level))
-        with self.lock, self.conn:
+        with self.transaction():
             self.conn.execute(
                 """
                 update member_profiles
@@ -442,63 +477,34 @@ class Store:
             )
         return profile
 
-    def calibration_for_profile(self, profile_id: str) -> MemberCalibration | None:
-        row = self.conn.execute("select * from member_calibrations where profile_id = ?", (profile_id,)).fetchone()
-        return calibration_from_row(row) if row else None
+    def patch_profile(self, actor: User, profile_id: str, body: dict) -> MemberProfile:
+        with self.transaction():
+            current = self.get_user(actor.id)
+            profile = self.get_profile(profile_id)
+            if current is None or current.token_version != actor.token_version or profile is None or not can_write_training(current, profile):
+                raise PermissionError("member is outside your mutation scope")
+            if current.role == "MEMBER" and {"reach_cm", "training_level"}.intersection(body):
+                raise PermissionError("members cannot change reach or training level")
+            values = validate_profile_patch(body)
+            if values.get("birthdate", "") is None:
+                values["birthdate"] = ""
+            return self.update_profile(dataclasses.replace(profile, **values))
 
-    def save_member_calibration(self, profile: MemberProfile, calibration: dict[str, Any]) -> MemberCalibration:
-        body_scale = calibration.get("body_scale") if isinstance(calibration.get("body_scale"), dict) else {}
-        raw_camera_config = calibration.get("cameras") or calibration.get("camera_config") or []
-        camera_config = raw_camera_config if isinstance(raw_camera_config, list) else []
-        estimated_reach = safe_int(body_scale.get("estimated_reach_cm") or calibration.get("estimated_reach_cm"))
-        record = MemberCalibration(
-            id=f"calibration_{profile.id}",
-            profile_id=profile.id,
-            user_id=profile.user_id,
-            gym_id=profile.gym_id,
-            status=str(calibration.get("status") or ""),
-            completed=bool(calibration.get("ready")),
-            completed_at=safe_float(calibration.get("completed_at"), time.time()),
-            sample_count=safe_int(calibration.get("sample_count")),
-            estimated_reach_cm=estimated_reach,
-            camera_config=camera_config,
-            body_scale=body_scale,
-            calibration=calibration,
-        )
-        with self.lock, self.conn:
-            self.conn.execute(
-                """
-                insert or replace into member_calibrations
-                (id, profile_id, user_id, gym_id, status, completed, completed_at, sample_count,
-                 estimated_reach_cm, camera_config, body_scale, calibration)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    record.id,
-                    record.profile_id,
-                    record.user_id,
-                    record.gym_id,
-                    record.status,
-                    1 if record.completed else 0,
-                    record.completed_at,
-                    record.sample_count,
-                    record.estimated_reach_cm,
-                    json.dumps(record.camera_config, ensure_ascii=False),
-                    json.dumps(record.body_scale, ensure_ascii=False),
-                    json.dumps(record.calibration, ensure_ascii=False),
-                ),
-            )
-            if estimated_reach > 0:
-                self.conn.execute("update member_profiles set reach_cm = ? where id = ?", (estimated_reach, profile.id))
-        return record
 
     def create_session(self, session: TrainingSession) -> TrainingSession:
-        with self.lock, self.conn:
+        with self.transaction():
+            if session.request_id:
+                existing = self.conn.execute("select * from training_sessions where created_by = ? and request_id = ?", (session.created_by, session.request_id)).fetchone()
+                if existing:
+                    previous = session_from_row(existing)
+                    if (previous.user_id, previous.gym_id, previous.camera_config, previous.focus) != (session.user_id, session.gym_id, session.camera_config, session.focus):
+                        raise ValueError("request_id is already used for a different session request")
+                    return previous
             self.conn.execute(
                 """
                 insert into training_sessions
-                (id, user_id, gym_id, started_at, ended_at, camera_config, overall_score, focus, feedback_report)
-                values (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                (id, user_id, gym_id, started_at, ended_at, camera_config, overall_score, focus, feedback_report, created_by, request_id)
+                values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     session.id,
@@ -510,10 +516,13 @@ class Store:
                     session.overall_score,
                     session.focus,
                     session.feedback_report,
+                    session.created_by,
+                    session.request_id,
                 ),
             )
         return session
 
+    @locked
     def get_session(self, session_id: str) -> TrainingSession | None:
         row = self.conn.execute("select * from training_sessions where id = ?", (session_id,)).fetchone()
         return session_from_row(row) if row else None
@@ -522,27 +531,25 @@ class Store:
         self,
         session_id: str,
         ended_at: float,
-        overall_score: int,
-        feedback_report: str = "",
     ) -> TrainingSession | None:
-        with self.lock, self.conn:
+        with self.transaction():
             self.conn.execute(
                 """
                 update training_sessions
-                set ended_at = ?, overall_score = ?, feedback_report = ?
+                set ended_at = coalesce(ended_at, ?)
                 where id = ?
                 """,
-                (ended_at, overall_score, feedback_report, session_id),
+                (ended_at, session_id),
             )
         return self.get_session(session_id)
 
     def delete_session(self, session_id: str) -> None:
-        with self.lock, self.conn:
+        with self.transaction():
             self.conn.execute("delete from coach_labels where session_id = ?", (session_id,))
             self.conn.execute("delete from training_sessions where id = ?", (session_id,))
 
     def create_label(self, label: CoachLabel) -> CoachLabel:
-        with self.lock, self.conn:
+        with self.transaction():
             self.conn.execute(
                 """
                 insert into coach_labels
@@ -561,12 +568,67 @@ class Store:
             )
         return label
 
+    @locked
     def labels_for_session(self, session_id: str) -> list[CoachLabel]:
         rows = self.conn.execute(
             "select * from coach_labels where session_id = ? order by created_at desc",
             (session_id,),
         ).fetchall()
         return [label_from_row(row) for row in rows]
+
+    def require_account_admin(self, actor: User) -> User:
+        current = self.get_user(actor.id)
+        if current is None or current.status != "ACTIVE" or current.token_version != actor.token_version or current.role not in {"OWNER", "CENTER_OWNER", "PLATFORM_ADMIN"}:
+            raise PermissionError("active account administrator is required")
+        return current
+
+    def create_managed_account(self, actor: User, body: dict[str, Any]) -> User:
+        with self.transaction():
+            actor = self.require_account_admin(actor)
+            role = body.get("role", "MEMBER")
+            center_id = body.get("center_id") or actor.gym_id
+            if actor.role != "PLATFORM_ADMIN" and (center_id != actor.gym_id or role not in {"COACH", "MEMBER"}):
+                raise PermissionError("center owners may create only coaches and members in their center")
+            account = self.create_user(body.get("username", ""), body.get("password", ""), role,
+                                       body.get("name", ""), center_id, body.get("email", ""))
+            self.create_profile(account, "", "", "")
+            self.audit_account(actor, account, "ACCOUNT_CREATED", {})
+            return account
+
+    def update_account(self, actor: User, target_id: str, body: dict[str, Any]) -> User:
+        if not set(body).issubset({"role", "status"}):
+            raise ValueError("only role and status may be changed")
+        with self.transaction():
+            actor = self.require_account_admin(actor)
+            target = self.get_user(target_id)
+            if target is None:
+                raise ValueError("account not found")
+            role, status = body.get("role", target.role), body.get("status", target.status)
+            if role not in ROLES or status not in {"ACTIVE", "SUSPENDED"}:
+                raise ValueError("invalid account role or status")
+            if target.id == actor.id and (role != target.role or status != target.status):
+                raise PermissionError("cannot change current account access")
+            if actor.role != "PLATFORM_ADMIN" and (target.gym_id != actor.gym_id or target.role not in {"COACH", "MEMBER"} or role not in {"COACH", "MEMBER"}):
+                raise PermissionError("target account is outside your access scope")
+            if (role, status) == (target.role, target.status):
+                return target
+            self.conn.execute("update users set role=?, status=?, token_version=token_version+1 where id=?", (role, status, target.id))
+            updated = self.get_user(target.id)
+            self.audit_account(actor, updated, "ACCOUNT_ACCESS_UPDATED", account_access_state(target))
+            return updated
+
+    def audit_account(self, actor: User, target: User, action: str, before: dict[str, Any]) -> None:
+        self.conn.execute("insert into account_audit_logs values (?, ?, ?, ?, ?, ?, ?, ?)",
+                          (secrets.token_hex(16), actor.id, target.id, target.gym_id, action,
+                           json.dumps(before), json.dumps(account_access_state(target)), time.time()))
+
+    def revoke_tokens(self, user_id: str) -> None:
+        with self.transaction():
+            self.conn.execute("update users set token_version=token_version+1 where id=?", (user_id,))
+
+
+def account_access_state(user: User) -> dict[str, Any]:
+    return {"role": user.role, "status": user.status, "token_version": user.token_version}
 
 
 def normalize_username(username: str) -> str:
@@ -588,8 +650,8 @@ def validate_username(username: str) -> None:
 
 
 def validate_password(password: str) -> None:
-    if len(password) < 8 or re.search(r"[^A-Za-z0-9]", password) is None:
-        raise ValueError("password must be at least 8 characters and include a special character")
+    if not isinstance(password, str) or not 8 <= len(password) <= 256 or re.search(r"[^A-Za-z0-9]", password) is None:
+        raise ValueError("password must be 8 to 256 characters and include a special character")
 
 
 def safe_int(value: Any, default: int = 0) -> int:
@@ -623,7 +685,7 @@ def user_from_row(row: sqlite3.Row) -> User:
     values = dict(row)
     values.setdefault("username", values.get("email", "").split("@")[0])
     values.setdefault("email", "")
-    return User(**{key: values[key] for key in ["id", "gym_id", "username", "email", "password_hash", "role", "name"]})
+    return User(**{key: values[key] for key in ["id", "gym_id", "username", "email", "password_hash", "role", "name", "status", "token_version"]})
 
 
 def gym_from_row(row: sqlite3.Row) -> Gym:
@@ -651,15 +713,6 @@ def profile_from_row(row: sqlite3.Row) -> MemberProfile:
     return MemberProfile(**values)
 
 
-def calibration_from_row(row: sqlite3.Row) -> MemberCalibration:
-    values = dict(row)
-    values["completed"] = bool(values["completed"])
-    values["camera_config"] = decode_json(values["camera_config"], [])
-    values["body_scale"] = decode_json(values["body_scale"], {})
-    values["calibration"] = decode_json(values["calibration"], {})
-    return MemberCalibration(**values)
-
-
 def session_from_row(row: sqlite3.Row) -> TrainingSession:
     values = dict(row)
     values["camera_config"] = decode_json(values["camera_config"], [])
@@ -680,9 +733,12 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(password: str, password_hash: str) -> bool:
-    salt, stored = password_hash.split(":", 1)
-    digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000)
-    return hmac.compare_digest(base64.urlsafe_b64encode(digest).decode(), stored)
+    try:
+        salt, stored = password_hash.split(":", 1)
+        digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120_000)
+        return hmac.compare_digest(base64.urlsafe_b64encode(digest).decode(), stored)
+    except (ValueError, TypeError, AttributeError):
+        return False
 
 
 def sign_token(user: User) -> str:
@@ -690,6 +746,7 @@ def sign_token(user: User) -> str:
         "sub": user.id,
         "gym_id": user.gym_id,
         "role": user.role,
+        "ver": user.token_version,
         "exp": int(time.time()) + 60 * 60 * 8,
     }
     raw = base64.urlsafe_b64encode(json.dumps(payload, separators=(",", ":")).encode()).decode()
@@ -699,15 +756,22 @@ def sign_token(user: User) -> str:
 
 def read_token(token: str) -> dict[str, Any]:
     try:
+        if not isinstance(token, str) or len(token) > 4096:
+            raise ValueError("invalid token")
         raw, sig = token.split(".", 1)
-    except ValueError as exc:
-        raise PermissionError("invalid token") from exc
-    expected = hmac.new(SECRET.encode(), raw.encode(), hashlib.sha256).hexdigest()
-    if not hmac.compare_digest(sig, expected):
-        raise PermissionError("invalid token signature")
-    payload = json.loads(base64.urlsafe_b64decode(raw.encode()).decode())
-    if payload["exp"] < time.time():
-        raise PermissionError("token expired")
+        expected = hmac.new(SECRET.encode(), raw.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            raise ValueError("invalid signature")
+        payload = json.loads(base64.urlsafe_b64decode(raw.encode()).decode())
+        if not isinstance(payload, dict) or not isinstance(payload.get("sub"), str):
+            raise ValueError("invalid claims")
+        expiry = payload.get("exp")
+        if isinstance(expiry, bool) or not isinstance(expiry, (float, int)) or not math.isfinite(expiry) or expiry <= time.time():
+            raise ValueError("expired token")
+        if not isinstance(payload.get("ver"), int) or payload["ver"] < 1:
+            raise ValueError("invalid token version")
+    except (ValueError, TypeError, KeyError, UnicodeError, binascii.Error) as exc:
+        raise PermissionError("invalid or expired token") from exc
     return payload
 
 
@@ -722,12 +786,24 @@ def serialize(value: Any) -> Any:
 
 
 def can_read_profile(actor: User, profile: MemberProfile) -> bool:
-    if actor.role == "OWNER":
+    if actor.status != "ACTIVE":
+        return False
+    if actor.role == "PLATFORM_ADMIN":
+        return True
+    if actor.role in {"OWNER", "CENTER_OWNER", "COACH"}:
         return actor.gym_id == profile.gym_id
-    return actor.id == profile.user_id
+    return actor.role == "MEMBER" and actor.id == profile.user_id and actor.gym_id == profile.gym_id
 
 
 def can_read_session(actor: User, session: TrainingSession) -> bool:
-    if actor.role == "OWNER":
+    if actor.status != "ACTIVE":
+        return False
+    if actor.role == "PLATFORM_ADMIN":
+        return True
+    if actor.role in {"OWNER", "CENTER_OWNER", "COACH"}:
         return actor.gym_id == session.gym_id
-    return actor.id == session.user_id
+    return actor.role == "MEMBER" and actor.id == session.user_id and actor.gym_id == session.gym_id
+
+
+def can_write_training(actor: User, record: MemberProfile | TrainingSession) -> bool:
+    return actor.role != "PLATFORM_ADMIN" and can_read_profile(actor, record)

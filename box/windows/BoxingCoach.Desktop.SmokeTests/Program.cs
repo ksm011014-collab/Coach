@@ -4,6 +4,19 @@ var directory = Path.Combine(Path.GetTempPath(), "BoxingCoach", "dpapi-smoke", G
 var path = Path.Combine(directory, "session.bin");
 try
 {
+    var worker = WorkerStatus.Parse("""
+        {"status":"ok","service":"boxing-coach-local","version":"0.3.0",
+         "capabilities":{"contract_version":1,"engine_version":"0.3.0","analysis":{"available":false,"status":"not_installed"}}}
+        """);
+    if (!worker.Available || worker.EngineVersion != "0.3.0"
+        || worker.Capabilities!.Value.GetProperty("analysis").GetProperty("available").GetBoolean())
+        throw new InvalidOperationException("Worker health contract was not preserved.");
+    if (WorkerStatus.Parse("""
+        {"status":"ok","service":"boxing-coach-local","version":"0.3.0",
+         "capabilities":{"contract_version":2,"engine_version":"0.3.0"}}
+        """).Available)
+        throw new InvalidOperationException("Unsupported worker contract was accepted.");
+
     var store = new DpapiSessionStore(path);
     var expected = new AuthSession("access-token", "refresh-token", 1234567890);
     store.Save(expected);
@@ -47,12 +60,12 @@ try
     }
 
     if (!LocalApiPolicy.TryMap(
-            new Uri("https://app.boxingcoach.example/__local_api/pose/3d"),
+            new Uri("https://app.boxingcoach.example/__local_api/recordings/convert"),
             "POST",
             out var localApiPath)
-        || localApiPath != "/api/pose/3d")
+        || localApiPath != "/api/recordings/convert")
     {
-        throw new InvalidOperationException("Approved local AI route was not mapped.");
+        throw new InvalidOperationException("Approved recording route was not mapped.");
     }
     if (LocalApiPolicy.TryMap(
             new Uri("https://app.boxingcoach.example/__local_api/members"),
@@ -62,11 +75,21 @@ try
         throw new InvalidOperationException("Central member API was exposed through the local proxy.");
     }
     if (LocalApiPolicy.TryMap(
-            new Uri("https://app.boxingcoach.example/__local_api/pose/3d"),
+            new Uri("https://app.boxingcoach.example/__local_api/recordings/convert"),
             "GET",
             out _))
     {
-        throw new InvalidOperationException("Local AI route accepted an invalid method.");
+        throw new InvalidOperationException("Recording route accepted an invalid method.");
+    }
+    foreach (var retiredPath in new[] { "/pose/3d", "/system/pose3d", "/calibration/human" })
+    {
+        foreach (var method in new[] { "GET", "POST" })
+        {
+            if (LocalApiPolicy.TryMap(new Uri($"https://app.boxingcoach.example/__local_api{retiredPath}"), method, out _))
+            {
+                throw new InvalidOperationException("Retired analysis route was exposed through the local proxy.");
+            }
+        }
     }
 
     if (!BridgeMessagePolicy.IsRequestIdAllowed("request-123")

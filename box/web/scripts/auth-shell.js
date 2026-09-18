@@ -1,31 +1,51 @@
+let authRefreshPending = null;
+let authSessionGeneration = 0;
+
 async function api(path, options = {}, allowRefresh = true) {
+  const requestToken = state.token;
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
   const response = await platformApiFetch(path, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (response.status === 401 && allowRefresh && state.refreshToken && !path.startsWith("/auth/")) {
-    await refreshAuthSession();
+    if (state.token === requestToken) await refreshAuthSession();
     return api(path, options, false);
   }
-  if (!response.ok) throw new Error(payload.error || localizedApiError(response.status));
+  if (!response.ok) {
+    const error = new Error(payload.error || localizedApiError(response.status));
+    error.status = response.status;
+    throw error;
+  }
   return payload;
 }
 
 async function refreshAuthSession() {
+  if (authRefreshPending) return authRefreshPending;
+  authRefreshPending = performAuthRefresh();
+  try { return await authRefreshPending; }
+  finally { authRefreshPending = null; }
+}
+
+async function performAuthRefresh() {
+  const generation = authSessionGeneration;
+  const refreshToken = state.refreshToken;
+  if (!refreshToken) throw new Error("다시 로그인해주세요.");
   const response = await fetch("/api/auth/refresh", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: state.refreshToken }),
+    body: JSON.stringify({ refresh_token: refreshToken }),
   });
   const payload = await response.json().catch(() => ({}));
+  if (generation !== authSessionGeneration) throw new Error("로그인 상태가 변경되었습니다.");
   if (!response.ok || !payload.token) {
-    await clearAuthSession();
+    if ([400, 401, 403].includes(response.status)) await clearAuthSession();
     throw new Error(payload.error || "로그인이 만료되었습니다. 다시 로그인해주세요.");
   }
   await applyAuthSession(payload);
 }
 
 async function applyAuthSession(payload) {
+  authSessionGeneration += 1;
   state.token = payload.token;
   state.refreshToken = payload.refresh_token || state.refreshToken || null;
   state.tokenExpiresAt = Date.now() + Number(payload.expires_in || 3600) * 1000;
@@ -37,10 +57,25 @@ async function applyAuthSession(payload) {
 }
 
 async function clearAuthSession() {
+  authSessionGeneration += 1;
   state.token = null;
   state.refreshToken = null;
   state.tokenExpiresAt = 0;
   await authSessionStorage.clear();
+}
+
+async function logoutAuthSession() {
+  if (authRefreshPending) await authRefreshPending;
+  try {
+    await api("/auth/logout", { method: "POST", body: "{}" }, false);
+  } catch (error) {
+    if (error.status !== 401) throw error;
+    if (state.refreshToken) {
+      await refreshAuthSession();
+      await api("/auth/logout", { method: "POST", body: "{}" }, false);
+    }
+  }
+  await clearAuthSession();
 }
 
 function localizedApiError(status) {
@@ -149,11 +184,7 @@ function renderApp() {
   $("#sidebarToggle").title = state.sidebarCollapsed ? "사이드바 열기" : "사이드바 접기";
   renderNav();
   renderView();
-  resizeCanvas();
-  resetHud();
-  if (state.activeView === "coach") {
-    drawSkeleton();
-  }
+  updateSessionControls();
 }
 
 function renderAuthForm() {
@@ -271,7 +302,6 @@ function renderNav() {
     button.addEventListener("click", () => {
       state.activeView = button.dataset.view;
       renderApp();
-      if (state.activeView === "coach") resetHud();
     });
   });
 }
@@ -296,6 +326,10 @@ function renderView() {
     staff: "직원",
     accounts: "계정 권한",
     attendance: "출석",
+    memberships: "회원권",
+    payments: "수납",
+    workouts: "운동 기록",
+    memberHome: "내 이용 현황",
     memberWorkouts: "운동 현황",
     memberAttendance: "출석",
     memberProfile: "정보 변경",
@@ -303,14 +337,18 @@ function renderView() {
   };
   $("#viewTitle").textContent = titleMap[state.activeView] || "대시보드";
   if (state.activeView === "platformOps") renderPlatformOperations();
-  if (state.activeView === "dashboard") renderDashboard();
+  if (state.activeView === "dashboard") renderOperationalView("dashboard");
   if (state.activeView === "center") renderCenterInfo();
-  if (state.activeView === "members") renderMembers();
+  if (state.activeView === "members") renderOperationalView("members");
   if (state.activeView === "staff") renderStaff();
   if (state.activeView === "accounts") renderAccounts();
-  if (state.activeView === "attendance") renderAttendance();
-  if (state.activeView === "memberWorkouts") renderMemberWorkouts();
-  if (state.activeView === "memberAttendance") renderMemberAttendance();
+  if (state.activeView === "attendance") renderOperationalView("attendance");
+  if (state.activeView === "memberships") renderOperationalView("memberships");
+  if (state.activeView === "payments") renderOperationalView("payments");
+  if (state.activeView === "workouts") renderOperationalView("workouts");
+  if (state.activeView === "memberHome") renderOperationalView("home");
+  if (state.activeView === "memberWorkouts") renderOperationalView("workouts");
+  if (state.activeView === "memberAttendance") renderUnconnectedAttendance();
   if (state.activeView === "memberProfile") renderMemberProfile();
   if (state.activeView === "settings") renderSettings();
 }

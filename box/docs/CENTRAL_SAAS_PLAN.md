@@ -1,11 +1,13 @@
 # BoxingCoach Central SaaS Transition Plan
 
+> Current engine status: the previous calibration, motion recognition, and feedback implementation has been removed. The baseline below is historical. See [engine removal](ENGINE_REMOVAL.md).
+
 ## Baseline
 
 Validated on 2026-08-09 before transition work:
 
 - Python: `python -m unittest discover -s tests -v` passed 29 tests.
-- JavaScript: `test_motion_classifier.js` and `test_android_offline.js` passed.
+- JavaScript: the former classifier test (now removed) and `test_android_offline.js` passed.
 - Windows: `BoxingCoach.Desktop.SmokeTests` passed with a repository-local .NET CLI home.
 - Local development data is stored in `backend/boxing_coach.db`.
 - Existing packaged Windows layouts use `DataMode=local` and contain no Supabase credentials.
@@ -17,9 +19,9 @@ The worktree already contained broad uncommitted application changes and generat
 ### Implemented
 
 - Local Python API with SQLite tenant scoping.
-- Optional Supabase gateway for identity, accounts, centers, member profiles, calibrations, session summaries, and coach labels.
+- Optional Supabase gateway for identity, accounts, centers, member profiles, session summaries, and coach labels.
 - Supabase RLS for the existing central tables.
-- Guarded account, profile, and calibration RPCs.
+- Guarded account and profile RPCs; legacy calibration RPC definitions remain only in historical database migrations.
 - Basic platform/center account-management UI.
 - WPF/WebView2 desktop shell that launches a bundled Python worker and displays the local web UI.
 - DPAPI-backed desktop login session bridge.

@@ -1,26 +1,31 @@
-const CACHE_NAME = "boxingcoach-shell-2026-08-09-2";
+const CACHE_NAME = "boxingcoach-shell-2026-09-18-1";
 const APP_SHELL = [
   "/",
   "/index.html",
+  "/preview.html",
   "/styles.css",
+  "/styles/operations.css",
+  "/scripts/center.js",
+  "/scripts/operations-service.js",
+  "/scripts/operations-ui.js",
+  "/scripts/operations-commerce.js",
+  "/scripts/operations-shell.js",
+  "/scripts/operations-live.js",
   "/app.js",
   "/manifest.webmanifest",
   "/icons/app-icon.svg",
   "/icons/app-icon-maskable.svg",
   "/scripts/accounts.js",
-  "/scripts/attendance.js",
+  "/scripts/android-offline.js",
   "/scripts/auth-shell.js",
   "/scripts/business.js",
   "/scripts/config.js",
-  "/scripts/dashboard.js",
   "/scripts/desktop-bridge.js",
-  "/scripts/feedback.js",
   "/scripts/member-home.js",
-  "/scripts/members.js",
   "/scripts/platform-admin.js",
   "/scripts/preferences.js",
   "/scripts/pwa.js",
-  "/scripts/session-pose.js",
+  "/scripts/session.js",
   "/scripts/storage.js",
   "/scripts/utils.js"
 ];
@@ -47,27 +52,34 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
   if (request.mode === "navigate") {
+    const documentPath = url.pathname === "/" ? "/index.html" : url.pathname;
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put("/index.html", copy));
+        .then(async (response) => {
+          if (response.ok && ["/index.html", "/preview.html"].includes(documentPath)) {
+            const cache = await caches.open(CACHE_NAME);
+            await cache.put(documentPath, response.clone());
+          }
           return response;
         })
-        .catch(() => caches.match("/index.html"))
+        .catch(async () => (await caches.match(documentPath)) || new Response("오프라인에서 이 페이지를 열 수 없습니다.", { status: 503, headers: { "Content-Type": "text/plain; charset=utf-8" } }))
     );
     return;
   }
   event.respondWith(
     caches.match(request).then((cached) => {
-      const network = fetch(request).then((response) => {
+      const network = fetch(request).then(async (response) => {
         if (response.ok) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          const cache = await caches.open(CACHE_NAME);
+          await cache.put(request, response.clone());
         }
         return response;
       });
-      return cached || network;
+      if (cached) {
+        event.waitUntil(network.catch(() => {}));
+        return cached;
+      }
+      return network;
     })
   );
 });

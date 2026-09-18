@@ -20,13 +20,10 @@ const state = {
   activeView: "coach",
   authMode: "owner",
   sidebarCollapsed: localStorage.getItem("sidebar_collapsed") === "true",
-  latestPose: null,
-  cameraReady: false,
+  sessionBusy: false,
+  pendingSessionStart: null,
+  cameraMessage: "",
   usernameChecked: "",
-  memberFilter: "all",
-  memberSearch: "",
-  showMemberForm: false,
-  editingMemberId: "",
   selectedMemberId: "",
   selectedRecordIds: new Set(),
   activeSessionId: "",
@@ -36,52 +33,15 @@ const state = {
   recorder: null,
   recordedChunks: [],
   recordingStream: null,
-  recordingCanvas: null,
-  recordingFrame: null,
   localRecordings: {},
-  poseRuntime: null,
-  poseLandmarker: null,
-  poseLandmarkers: [],
-  poseLoop: null,
-  poseRunning: false,
-  lastVideoTime: -1,
-  poseTimestampMs: 0,
-  poseTimestampOriginMs: 0,
-  poseErrorShown: false,
   sessionCameraSources: [],
-  pose3dInFlight: false,
-  lastPose3dAt: 0,
-  lastPose3dPacketAt: 0,
-  pose3dStatus: "",
-  feedbackLog: [],
-  lastFeedbackAt: 0,
-  feedbackWindow: null,
-  sessionFeedback: null,
-  currentInstruction: null,
-  currentInstructionProgress: 0,
-  currentInstructionStartedAt: 0,
-  currentInstructionQuality: {},
-  lastMotionSample: null,
-  motionHistory: [],
-  cameraMotionHistories: {},
-  lastCameraMotionSamples: {},
-  punchLock: null,
   settings: loadSettings(),
   settingsMessage: "",
   center: loadCenterProfile(),
   centerMessage: "",
-  staff: loadStaff(),
-  selectedStaffId: "",
-  showStaffForm: false,
-  staffMessage: "",
   accountModalOpen: false,
   cameraSetup: loadCameraSetup(),
-  memberCalibrations: loadMemberCalibrations(),
-  calibrationMessage: "",
-  calibrationRunning: false,
-  calibrationCancelled: false,
   videoDevices: [],
-  activeCameraConfig: [],
 };
 
 document.querySelectorAll(".auth-tab").forEach((tab) => {
@@ -126,18 +86,14 @@ $("#stopSessionHud").addEventListener("click", async () => {
   try {
     await stopSession();
   } catch (error) {
-    $("#feedbackText").textContent = error.message;
+    $("#sessionMessage").textContent = error.message;
   }
 });
 
 $("#retryCamera").addEventListener("click", async () => {
-  await startSession();
+  await previewCamera();
 });
 
-window.addEventListener("resize", () => {
-  resizeCanvas();
-  drawSkeleton();
-});
 
 applyTheme();
 initializeApplication();

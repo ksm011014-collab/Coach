@@ -1,5 +1,12 @@
 from __future__ import annotations
 
+try:
+    from camera import normalize_camera_config
+    from profile_input import validate_profile_patch
+except ModuleNotFoundError:
+    from backend.camera import normalize_camera_config
+    from backend.profile_input import validate_profile_patch
+
 import datetime as dt
 import json
 import os
@@ -60,9 +67,6 @@ class SupabaseGateway:
     def handles(method: str, path: str) -> bool:
         if path in {
             "/api/system/health",
-            "/api/system/pose3d",
-            "/api/pose/3d",
-            "/api/calibration/human",
             "/api/recordings/convert",
         }:
             return False
@@ -91,6 +95,8 @@ class SupabaseGateway:
             return self.login(body), HTTPStatus.OK
         if method == "POST" and path == "/api/auth/refresh":
             return self.refresh(body), HTTPStatus.OK
+        if method == "POST" and path == "/api/auth/logout":
+            return self.logout(self._required_token(token)), HTTPStatus.OK
         if method == "POST" and path == "/api/auth/signup":
             return self.signup(body), HTTPStatus.CREATED
         if method == "GET" and path == "/api/auth/check-username":
@@ -275,11 +281,7 @@ class SupabaseGateway:
         return map_profile(rows[0])
 
     def update_member(self, token: str, profile_id: str, body: dict[str, Any]) -> dict[str, Any]:
-        allowed = {
-            "name", "phone", "birthdate", "gender", "height_cm", "weight_kg",
-            "reach_cm", "stance", "injury_note", "training_level",
-        }
-        values = {key: value for key, value in body.items() if key in allowed}
+        values = validate_profile_patch(body)
         if "birthdate" in values and not values["birthdate"]:
             values["birthdate"] = None
         rows = self._request(
@@ -292,27 +294,6 @@ class SupabaseGateway:
             raise CentralGatewayError("회원 정보를 변경할 권한이 없습니다.", HTTPStatus.FORBIDDEN)
         return {"member": self.member(token, profile_id)}
 
-    def calibration(self, token: str, profile_id: str) -> dict[str, Any] | None:
-        rows = self._request(
-            "GET",
-            "/rest/v1/member_calibrations",
-            token=token,
-            query={"select": "*", "profile_id": f"eq.{profile_id}", "limit": "1"},
-        )
-        return map_calibration(rows[0]) if rows else None
-
-    def save_calibration(
-        self, token: str, profile_id: str, calibration: dict[str, Any]
-    ) -> dict[str, Any]:
-        if not calibration.get("ready"):
-            raise CentralGatewayError("완료된 캘리브레이션만 저장할 수 있습니다.", HTTPStatus.BAD_REQUEST)
-        rows = self._request(
-            "POST",
-            "/rest/v1/rpc/save_member_calibration",
-            token=token,
-            body={"p_profile_id": profile_id, "p_calibration": calibration},
-        )
-        return {"calibration": map_calibration(rows[0]), "member": self.member(token, profile_id)}
 
     def sessions(self, token: str) -> list[dict[str, Any]]:
         rows = self._request(
@@ -326,24 +307,21 @@ class SupabaseGateway:
     def create_session(self, token: str, body: dict[str, Any]) -> dict[str, Any]:
         actor = self._account_for_token(token)
         target_user_id = str(body.get("user_id") or actor["id"])
-        target_rows = self._request(
-            "GET",
-            "/rest/v1/accounts",
-            token=token,
-            query={"select": "id,center_id", "id": f"eq.{target_user_id}", "limit": "1"},
-        )
-        if not target_rows:
-            raise CentralGatewayError("훈련 대상 계정에 접근할 수 없습니다.", HTTPStatus.FORBIDDEN)
+        request_id = body.get("request_id")
+        focus = body.get("focus", "free_training")
+        if request_id is not None and (not isinstance(request_id, str) or not 1 <= len(request_id) <= 128):
+            raise CentralGatewayError("invalid request_id", HTTPStatus.BAD_REQUEST)
+        if not isinstance(focus, str) or not 1 <= len(focus) <= 100:
+            raise CentralGatewayError("invalid focus", HTTPStatus.BAD_REQUEST)
         rows = self._request(
             "POST",
-            "/rest/v1/training_sessions",
+            "/rest/v1/rpc/start_training_session",
             token=token,
-            prefer="return=representation",
             body={
-                "user_id": target_user_id,
-                "center_id": target_rows[0]["center_id"],
-                "camera_config": body.get("camera_config") or [],
-                "focus": str(body.get("focus") or "guard_and_strikes"),
+                "p_user_id": target_user_id,
+                "p_camera_config": normalize_camera_config(body.get("camera_config")),
+                "p_focus": focus,
+                "p_request_id": request_id,
             },
         )
         return {"session": map_session(rows[0])}
@@ -362,17 +340,9 @@ class SupabaseGateway:
         return {"session": map_session(rows[0]), "labels": [map_label(row) for row in labels]}
 
     def end_session(self, token: str, session_id: str, body: dict[str, Any]) -> dict[str, Any]:
-        score = max(0, min(100, safe_int(body.get("overall_score"))))
-        report = body.get("feedback_report") or {}
-        if isinstance(report, str):
-            try:
-                report = json.loads(report)
-            except json.JSONDecodeError:
-                report = {"summary": report}
         rows = self._request(
-            "PATCH", "/rest/v1/training_sessions", token=token,
-            query={"id": f"eq.{session_id}"}, prefer="return=representation",
-            body={"ended_at": utc_now_iso(), "overall_score": score, "feedback_report": report, "updated_at": utc_now_iso()},
+            "POST", "/rest/v1/rpc/end_training_session", token=token,
+            body={"p_session_id": session_id},
         )
         if not rows:
             raise CentralGatewayError("운동 기록을 종료할 권한이 없습니다.", HTTPStatus.FORBIDDEN)
@@ -568,13 +538,9 @@ class SupabaseGateway:
         self, method: str, path: str, body: dict[str, Any], token: str
     ) -> tuple[dict[str, Any], HTTPStatus]:
         parts = path.strip("/").split("/")
+        if len(parts) < 3 or not parts[2]:
+            raise CentralGatewayError("회원 API를 찾을 수 없습니다.", HTTPStatus.NOT_FOUND)
         profile_id = parts[2]
-        if len(parts) == 4 and parts[3] == "calibration":
-            if method == "GET":
-                return {"calibration": self.calibration(token, profile_id)}, HTTPStatus.OK
-            if method == "POST":
-                calibration = body.get("calibration") if isinstance(body.get("calibration"), dict) else body
-                return self.save_calibration(token, profile_id, calibration), HTTPStatus.OK
         if len(parts) == 3 and method == "GET":
             return {"member": self.member(token, profile_id)}, HTTPStatus.OK
         if len(parts) == 3 and method == "PATCH":
@@ -585,6 +551,8 @@ class SupabaseGateway:
         self, method: str, path: str, body: dict[str, Any], token: str
     ) -> tuple[dict[str, Any], HTTPStatus]:
         parts = path.strip("/").split("/")
+        if len(parts) < 3 or not parts[2]:
+            raise CentralGatewayError("운동 기록 API를 찾을 수 없습니다.", HTTPStatus.NOT_FOUND)
         session_id = parts[2]
         if len(parts) == 4 and parts[3] == "end" and method == "PATCH":
             return self.end_session(token, session_id, body), HTTPStatus.OK
@@ -607,6 +575,17 @@ class SupabaseGateway:
             "expires_in": safe_int(auth.get("expires_in"), 3600),
             "user": account_payload["user"],
         }
+
+    def logout(self, token: str) -> dict[str, Any]:
+        # Auth revokes refresh sessions; RLS additionally invalidates already
+        # issued access tokens, which otherwise remain usable until expiry.
+        try:
+            self._request("POST", "/auth/v1/logout", token=token, query={"scope": "global"})
+        except CentralGatewayError as error:
+            if error.status not in {HTTPStatus.UNAUTHORIZED, HTTPStatus.NOT_FOUND}:
+                raise
+        self._request("POST", "/rest/v1/rpc/revoke_own_access_tokens", token=token, body={})
+        return {"logged_out": True}
 
     def _account_for_token(self, token: str) -> dict[str, Any]:
         rows = self._request(
@@ -816,23 +795,6 @@ def map_profile(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def map_calibration(row: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": row["id"],
-        "profile_id": row["profile_id"],
-        "user_id": row["user_id"],
-        "gym_id": row["center_id"],
-        "status": row.get("status") or "",
-        "completed": bool(row.get("completed")),
-        "completed_at": iso_to_timestamp(row.get("completed_at")),
-        "sample_count": row.get("sample_count", 0),
-        "estimated_reach_cm": row.get("estimated_reach_cm", 0),
-        "camera_config": row.get("camera_config") or [],
-        "body_scale": row.get("body_scale") or {},
-        "calibration": row.get("calibration") or {},
-    }
-
-
 def map_session(row: dict[str, Any]) -> dict[str, Any]:
     report = row.get("feedback_report") or {}
     return {
@@ -843,7 +805,7 @@ def map_session(row: dict[str, Any]) -> dict[str, Any]:
         "ended_at": iso_to_timestamp(row.get("ended_at")) if row.get("ended_at") else None,
         "camera_config": row.get("camera_config") or [],
         "overall_score": row.get("overall_score", 0),
-        "focus": row.get("focus") or "guard_and_strikes",
+        "focus": row.get("focus") or "free_training",
         "feedback_report": json.dumps(report, ensure_ascii=False) if report else "",
     }
 
