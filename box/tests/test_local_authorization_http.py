@@ -83,3 +83,21 @@ class LocalAuthorizationHttpTests(unittest.TestCase):
         body={'username':'newuser','password':'Synthetic!123','password_confirm':'Synthetic!123','name':{},'role':'OWNER','center_name':'New'}
         self.assertEqual(self.api('POST','/auth/signup',body=body)[0],400)
         self.assertEqual(len(self.store.gyms),count)
+
+    def test_operations_registration_readback_roles_and_retry(self):
+        product_request = {'operation': 'product.save', 'input': {'name': 'Synthetic pass', 'kind': 'COUNT', 'days': 30, 'count': 10, 'price': 10000}, 'request_id': 'http-product'}
+        self.assertEqual(self.api('POST', '/operations', 'COACH', product_request)[0], 403)
+        status, payload = self.api('POST', '/operations', 'OWNER', product_request)
+        self.assertEqual(status, 200)
+        product = payload['result']
+        values = {'username': 'operationalmember', 'name': 'Synthetic registered member', 'password': 'Synthetic!123', 'password_confirm': 'Synthetic!123', 'product_id': product['id']}
+        request = {'operation': 'member.create', 'input': values, 'request_id': 'http-register'}
+        status, created = self.api('POST', '/operations', 'OWNER', request)
+        self.assertEqual(status, 200, created)
+        self.assertEqual(self.api('POST', '/operations', 'OWNER', request), (status, created))
+        status, snapshot = self.api('GET', '/operations', 'OWNER')
+        self.assertEqual(status, 200)
+        self.assertIn(created['result']['id'], [row['id'] for row in snapshot['members']])
+        self.assertEqual(snapshot['passes'][0]['member_id'], created['result']['id'])
+        self.assertEqual(self.api('GET', '/operations', 'OTHER')[1]['passes'], [])
+        self.assertEqual(self.api('GET', '/operations', 'PLATFORM_ADMIN')[0], 403)

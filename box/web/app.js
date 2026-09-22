@@ -22,15 +22,17 @@ const state = {
   sidebarCollapsed: localStorage.getItem("sidebar_collapsed") === "true",
   sessionBusy: false,
   pendingSessionStart: null,
+  pendingSessionEnd: null,
+  motionReportVersions: [],
   cameraMessage: "",
   usernameChecked: "",
   selectedMemberId: "",
-  selectedRecordIds: new Set(),
   activeSessionId: "",
   activeSessionStartedAt: 0,
   sessionTimer: null,
   roundTimer: null,
   recorder: null,
+  recordingError: "",
   recordedChunks: [],
   recordingStream: null,
   localRecordings: {},
@@ -39,7 +41,6 @@ const state = {
   settingsMessage: "",
   center: loadCenterProfile(),
   centerMessage: "",
-  accountModalOpen: false,
   cameraSetup: loadCameraSetup(),
   videoDevices: [],
 };
@@ -74,12 +75,6 @@ $("#sidebarToggle").addEventListener("click", () => {
   renderApp();
 });
 
-$("#startSession").addEventListener("click", async () => {
-  state.activeView = "coach";
-  renderApp();
-  await startSession();
-});
-
 $("#startSessionHud").addEventListener("click", startSession);
 
 $("#stopSessionHud").addEventListener("click", async () => {
@@ -102,6 +97,7 @@ async function initializeApplication() {
   try {
     const response = await platformApiFetch("/system/health");
     const capabilities = await response.json();
+    state.motionReportVersions = Array.isArray(capabilities.capabilities?.motion_reports?.versions) ? capabilities.capabilities.motion_reports.versions : [];
     if (typeof capabilities.public_center_signup === "boolean") {
       state.publicCenterSignup = capabilities.public_center_signup;
     }

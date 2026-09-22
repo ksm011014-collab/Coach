@@ -719,6 +719,24 @@ input:focus {
   transform: scaleX(-1);
 }
 
+.motion-skeleton {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  pointer-events: none;
+}
+
+#motionStatus {
+  display: block;
+  margin-top: 6px;
+}
+
+#motionStatus:empty {
+  display: none;
+}
+
 .camera-mini-overlay {
   position: absolute;
   right: 42px;
@@ -1072,35 +1090,6 @@ h2 {
   white-space: nowrap;
 }
 
-.modal-backdrop {
-  position: fixed;
-  inset: 0px;
-  z-index: 30;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 8, 14, 0.68);
-  backdrop-filter: blur(8px);
-}
-
-.confirm-modal {
-  width: min(360px, -36px + 100vw);
-  border: 1px solid rgba(99, 234, 255, 0.24);
-  border-radius: 8px;
-  background: rgba(3, 18, 28, 0.96);
-  padding: 20px;
-  box-shadow: rgba(0, 0, 0, 0.36) 0px 24px 60px;
-}
-
-.confirm-modal strong {
-  display: block;
-  font-size: 20px;
-}
-
-.confirm-modal p {
-  margin: 8px 0px 18px;
-  color: var(--muted);
-}
-
 .avatar {
   display: inline-grid;
   place-items: center;
@@ -1122,7 +1111,7 @@ h2 {
 }
 
 .settings-layout {
-  max-width: 960px;
+  width: 100%;
   display: grid;
   grid-template-columns: minmax(0px, 1fr);
   gap: 16px;
@@ -1270,29 +1259,6 @@ h2 {
   color: var(--muted);
 }
 
-.account-modal {
-  width: min(680px, -36px + 100vw);
-}
-
-.account-edit-form {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(180px, 1fr));
-  gap: 12px;
-  margin-top: 16px;
-}
-
-.account-edit-form .form-message,
- .account-edit-form .modal-actions,
- .account-edit-form .full {
-  grid-column: 1 / -1;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
 .settings-footer {
   display: flex;
   justify-content: flex-end;
@@ -1315,6 +1281,13 @@ h2 {
   color: var(--text);
   border-color: rgba(70, 107, 128, 0.34);
   box-shadow: rgba(40, 69, 88, 0.09) 0px 12px 30px;
+}
+
+:root[data-theme="light"] .workspace > .panel,
+:root[data-theme="light"] .admin-board {
+  border: 1px solid #bcced6;
+  background: #fff;
+  box-shadow: none;
 }
 
 :root[data-theme="light"] input,
@@ -1705,6 +1678,16 @@ h2 {
 
 .camera-status-card p {
   margin: 8px 0px 0px;
+}
+
+.motion-score-card { top: 24px; right: 24px; min-width: 120px; text-align: center; }
+.motion-score-card strong { display: block; font-size: 32px; }
+.motion-score-card small { display: block; }
+.motion-feedback { left: 24px; bottom: 24px; max-width: min(460px, 100% - 48px); }
+.motion-feedback:empty { display: none; }
+@media (max-width: 700px) {
+  .motion-score-card { top: auto; right: 12px; bottom: 105px; min-width: 80px; padding: 8px; }
+  .motion-feedback { left: 12px; bottom: 12px; max-width: calc(100% - 24px); }
 }
 
 @media (max-width: 700px) {

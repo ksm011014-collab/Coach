@@ -10,6 +10,7 @@
     <link rel="icon" href="/icons/app-icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/styles/operations.css">
+    <link rel="stylesheet" href="/styles/round-coach.css">
   </head>
   <body>
     <div id="app" class="shell auth-shell">
@@ -27,7 +28,7 @@
         <nav id="nav"></nav>
         <div class="account">
           <span id="userName"></span>
-          <button id="logoutButton" class="ghost" title="로그아웃"><span class="logout-icon" aria-hidden="true"><svg class="logout-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></span><span class="logout-label">로그아웃</span></button>
+          <button id="logoutButton" data-i18n-title="로그아웃" class="ghost" title="로그아웃"><span class="logout-icon" aria-hidden="true"><svg class="logout-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></span><span class="logout-label" data-i18n="로그아웃">로그아웃</span></button>
         </div>
       </aside>
 
@@ -57,8 +58,8 @@
               </div>
             </div>
             <div class="auth-tabs">
-              <button class="auth-tab active" data-auth-mode="owner">관리자</button>
-              <button class="auth-tab" data-auth-mode="member">회원</button>
+              <button class="auth-tab active" data-auth-mode="owner" data-i18n="관리자">관리자</button>
+              <button class="auth-tab" data-auth-mode="member" data-i18n="회원">회원</button>
             </div>
 
             <form id="loginForm" class="auth-form">
@@ -72,34 +73,37 @@
 
         <section id="hud" class="hud hidden">
           <video id="cameraPreview" class="hud-camera" autoplay muted playsinline></video>
+          <canvas id="motionSkeleton" class="motion-skeleton" aria-hidden="true"></canvas>
           <div class="camera-fallback hud-camera" id="cameraFallback">LIVE CAMERA</div>
           <div id="cameraMiniOverlay" class="camera-mini-overlay hidden" aria-label="Additional camera views"></div>
           <div id="cameraOffline" class="camera-offline">
-            <strong>카메라 연결 안됨</strong>
-            <span>운동 세션을 시작하려면 카메라 권한을 허용하고 장치를 연결하세요.</span>
-            <button id="retryCamera">카메라 연결</button>
+            <strong data-i18n="카메라 연결 안됨">카메라 연결 안됨</strong>
+            <span data-i18n="운동 세션을 시작하려면 카메라 권한을 허용하고 장치를 연결하세요.">운동 세션을 시작하려면 카메라 권한을 허용하고 장치를 연결하세요.</span>
+            <button id="retryCamera" data-i18n="카메라 연결">카메라 연결</button>
           </div>
           <article class="overlay camera-status-card">
             <span id="cameraStatus">카메라 대기</span>
+            <small id="motionStatus" role="status"></small>
             <p id="sessionMessage" role="status">분석 엔진 준비 중 · 카메라와 운동 기록을 사용할 수 있습니다.</p>
           </article>
 
           <article class="overlay session-card">
-            <span>운동 기록</span>
+            <span data-i18n="운동 기록">운동 기록</span>
             <strong id="sessionState">대기 중</strong>
             <small id="sessionTimer">00:00</small>
             <div class="session-actions">
-              <button id="startSessionHud">시작</button>
-              <button id="stopSessionHud" class="danger" disabled>종료</button>
+              <button id="startSessionHud" data-i18n="시작">시작</button>
+              <button id="stopSessionHud" class="danger" disabled data-i18n="종료">종료</button>
             </div>
           </article>
+          <article class="overlay motion-score-card" aria-label="라운드 누적 점수"><span data-i18n="라운드 점수">라운드 점수</span><strong id="motionScore">0</strong><small data-i18n="시험 판정">시험 판정</small></article>
+          <p id="motionFeedback" class="overlay motion-feedback" role="status"></p>
         </section>
 
         <section id="workspace" class="workspace hidden">
           <div class="panel">
             <div class="panel-head">
               <h2 id="viewTitle">대시보드</h2>
-              <button id="startSession">실시간 세션 시작</button>
             </div>
             <div id="viewContent" class="view-grid"></div>
           </div>
@@ -108,14 +112,17 @@
     </div>
     <aside id="updateBanner" class="update-banner hidden" aria-live="polite">
       <div>
-        <strong>새 웹 버전을 사용할 수 있습니다.</strong>
-        <span id="updateBannerMessage">운동 중이 아닐 때 안전하게 업데이트할 수 있습니다.</span>
+        <strong data-i18n="새 웹 버전을 사용할 수 있습니다.">새 웹 버전을 사용할 수 있습니다.</strong>
+        <span id="updateBannerMessage" data-i18n="운동 중이 아닐 때 안전하게 업데이트할 수 있습니다.">운동 중이 아닐 때 안전하게 업데이트할 수 있습니다.</span>
       </div>
-      <button id="applyWebUpdate" type="button">업데이트</button>
+      <button id="applyWebUpdate" type="button" data-i18n="업데이트">업데이트</button>
     </aside>
+    <script src="/scripts/i18n.js"></script>
     <script src="/scripts/operations-service.js"></script>
     <script src="/scripts/operations-ui.js"></script>
     <script src="/scripts/operations-commerce.js"></script>
+    <script src="/scripts/operations-views.js"></script>
+    <script src="/scripts/operations-people.js"></script>
     <script src="/scripts/operations-shell.js"></script>
     <script src="/scripts/operations-live.js"></script>
     <script src="/scripts/android-offline.js"></script>
@@ -131,6 +138,8 @@
     <script src="/scripts/business.js"></script>
     <script src="/scripts/center.js"></script>
     <script src="/scripts/session.js"></script>
+    <script src="/scripts/motion-session.js"></script>
+    <script src="/scripts/round-coach.js"></script>
     <script src="/app.js"></script>
     <script src="/scripts/pwa.js"></script>
   </body>

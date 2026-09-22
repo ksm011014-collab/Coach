@@ -26,3 +26,5 @@ artifacts/
 coach.zip
 migration-work/
 *.migration-plan.json
+supabase/.temp/
+web/vendor/motion/

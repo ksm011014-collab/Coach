@@ -1,0 +1,41 @@
+.round-coach {
+  width: min(980px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  color: var(--text, #e4faff);
+  background: #071c27;
+  border: 1px solid var(--line, #286272);
+  border-radius: 18px;
+}
+.round-coach::backdrop { background: rgb(0 8 14 / 78%); }
+:is(html, body)[data-theme="light"] .round-coach { background: #f4f8fa; color: #123044; border-color: #b6ceda; }
+:is(html, body)[data-theme="light"] .round-coach button { color: #123044; background: #ffffff; border-color: #9cbfce; }
+:is(html, body)[data-theme="light"] .round-coach textarea { color: #234254; background: #e6eef2; border-color: #b6ceda; }
+:is(html, body)[data-theme="light"] .round-coach .coach-message { border-color: #b6ceda; }
+.round-coach-layout { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr); }
+.coach-hologram-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 28px; background: radial-gradient(ellipse, #123c4c, #04131e 75%); color: #a6f9ff; min-height: 360px; }
+.coach-hologram-panel > span { font-size: 13px; }
+.coach-hologram { position: relative; width: 180px; height: 180px; transform: scale(calc(1 + var(--voice-level, 0) * 0.15)); }
+.coach-core { position: absolute; inset: 40px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #d3ffff, #32e0e1 20%, #0d5266 58%, #072533); box-shadow: 0 0 35px #23d8e766, inset 0 0 18px #a1f6ff; }
+.coach-orbit { position: absolute; inset: 7px; border: 1px solid #64e4f8; border-radius: 50%; transform: rotateX(65deg) rotate(-30deg); box-shadow: 0 0 12px #35c6e655; }
+.coach-orbit-cross { transform: rotateY(65deg) rotate(25deg); }
+.coach-conversation { padding: 24px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.coach-conversation header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.coach-conversation h2 { margin: 0; font-size: 20px; }
+.coach-messages { min-height: 180px; max-height: 40dvh; overflow-y: auto; overflow-wrap: anywhere; }
+.coach-message { border: 1px solid var(--line, #286272); border-radius: 12px; padding: 16px; line-height: 1.6; }
+.coach-message p:last-child { margin-bottom: 0; }
+.coach-service-status { margin: 0; font-size: 13px; }
+.coach-input { display: grid; gap: 8px; }
+.coach-input textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.coach-input > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.round-next-actions { left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; width: min(440px, calc(100% - 48px)); }
+.round-next-actions strong { width: 100%; text-align: center; }
+@media (max-width: 640px) {
+  .round-coach-layout { grid-template-columns: minmax(0, 1fr); }
+  .coach-hologram-panel { min-height: 100px; padding: 16px; gap: 8px; }
+  .coach-hologram { width: 100px; height: 100px; }
+  .coach-core { inset: 22px; }
+  .coach-conversation { padding: 16px; }
+  .coach-messages { min-height: 100px; max-height: 24dvh; }
+}

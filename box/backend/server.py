@@ -23,6 +23,8 @@ try:
     from runtime_contract import ENGINE_VERSION, capabilities, request_origin_allowed
     from errors import ApiError, AuthenticationError
     from central_gateway import CentralGatewayError, SupabaseGateway
+    from operations import Operations
+    from motion_report import finish_motion_round
     from domain import (
         CoachLabel,
         MemberProfile,
@@ -43,6 +45,8 @@ except ModuleNotFoundError:
     from backend.runtime_contract import ENGINE_VERSION, capabilities, request_origin_allowed
     from backend.errors import ApiError, AuthenticationError
     from backend.central_gateway import CentralGatewayError, SupabaseGateway
+    from backend.operations import Operations
+    from backend.motion_report import finish_motion_round
     from backend.domain import (
         CoachLabel,
         MemberProfile,
@@ -211,6 +215,17 @@ class ApiHandler(SimpleHTTPRequestHandler):
                 self.check_username(urlparse(self.path).query)
             elif method == "GET" and path == "/api/me":
                 self.me()
+            elif path == "/api/operations" and method in {"GET", "POST"}:
+                if CENTRAL_GATEWAY is not None:
+                    raise ApiError("central operations migration is not connected", HTTPStatus.SERVICE_UNAVAILABLE)
+                operations = Operations(STORE)
+                actor = self.require_user()
+                if method == "GET":
+                    selected = parse_qs(urlparse(self.path).query).get("date", [None])[0]
+                    self.respond(operations.snapshot(actor, selected))
+                else:
+                    values = body or {}
+                    self.respond({"result": operations.mutate(actor, values.get("operation"), values.get("input"), values.get("request_id"))})
             elif method == "GET" and path == "/api/members":
                 self.members()
             elif method == "POST" and path == "/api/members":
@@ -426,7 +441,7 @@ class ApiHandler(SimpleHTTPRequestHandler):
             raise ApiError("session not found", HTTPStatus.NOT_FOUND)
         if not can_write_training(user, session):
             raise PermissionError("session is outside your access scope")
-        updated = STORE.end_session(session_id, time.time())
+        updated = finish_motion_round(STORE, user, session_id, body['motion_report'], time.time()) if 'motion_report' in body else STORE.end_session(session_id, time.time())
         self.respond({"session": serialize(updated)})
 
     def delete_session(self, session_id: str) -> None:

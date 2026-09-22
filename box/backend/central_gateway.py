@@ -3,9 +3,11 @@ from __future__ import annotations
 try:
     from camera import normalize_camera_config
     from profile_input import validate_profile_patch
+    from operations_summary import attendance_roster, revenue_months
 except ModuleNotFoundError:
     from backend.camera import normalize_camera_config
     from backend.profile_input import validate_profile_patch
+    from backend.operations_summary import attendance_roster, revenue_months
 
 import datetime as dt
 import json
@@ -16,7 +18,7 @@ from http import HTTPStatus
 from types import SimpleNamespace
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, parse_qs
 from urllib.request import Request, urlopen
 
 
@@ -78,6 +80,7 @@ class SupabaseGateway:
                 "/api/sessions",
                 "/api/features",
                 "/api/admin/",
+                "/api/operations",
             )
         )
 
@@ -103,6 +106,10 @@ class SupabaseGateway:
             return self.check_username(query), HTTPStatus.OK
         if method == "GET" and path == "/api/me":
             return self.me(self._required_token(token)), HTTPStatus.OK
+        if path == "/api/operations" and method == "GET":
+            return self.operations_snapshot(self._required_token(token), query), HTTPStatus.OK
+        if path == "/api/operations" and method == "POST":
+            return self.operations_mutate(self._required_token(token), body), HTTPStatus.OK
         if method == "GET" and path == "/api/members":
             return {"members": self.members(self._required_token(token))}, HTTPStatus.OK
         if method == "POST" and path == "/api/members":
@@ -242,6 +249,27 @@ class SupabaseGateway:
         )
         return [map_profile(row) for row in rows]
 
+    def operations_snapshot(self, token: str, query: str = "") -> dict[str, Any]:
+        result = self._request("POST", "/rest/v1/rpc/operations_snapshot", token=token, body={})
+        if not isinstance(result, dict) or not all(isinstance(result.get(key), list) for key in ('members', 'products', 'passes', 'attendance', 'payments', 'notes')):
+            raise CentralGatewayError("업무 조회 응답이 올바르지 않습니다.", HTTPStatus.BAD_GATEWAY)
+        today = result['referenceDate']
+        selected = parse_qs(query).get('date', [today])[0]
+        result['selectedDate'] = selected
+        result['roster'] = attendance_roster(result['members'], result['attendance'], selected, today)
+        result['revenue'] = revenue_months(result['payments'], today)
+        return result
+
+    def operations_mutate(self, token: str, body: dict[str, Any]) -> dict[str, Any]:
+        operation, values, request_id = body.get('operation'), body.get('input'), body.get('request_id')
+        if not isinstance(operation, str) or not isinstance(values, dict) or not isinstance(request_id, str) or not 1 <= len(request_id.strip()) <= 128:
+            raise CentralGatewayError("업무 변경 요청 형식이 올바르지 않습니다.", HTTPStatus.BAD_REQUEST)
+        if operation == 'member.create':
+            return self._request("POST", "/functions/v1/register-member", token=token, body={'input': values, 'request_id': request_id})
+        result = self._request("POST", "/rest/v1/rpc/operations_mutate", token=token,
+                               body={'p_operation': operation, 'p_input': values, 'p_request_id': request_id})
+        return {'result': result}
+
     def create_member(self, token: str, body: dict[str, Any]) -> dict[str, Any]:
         password = str(body.get("password") or "")
         if password != str(body.get("password_confirm") or password):
@@ -340,9 +368,10 @@ class SupabaseGateway:
         return {"session": map_session(rows[0]), "labels": [map_label(row) for row in labels]}
 
     def end_session(self, token: str, session_id: str, body: dict[str, Any]) -> dict[str, Any]:
+        motion = 'motion_report' in body
         rows = self._request(
-            "POST", "/rest/v1/rpc/end_training_session", token=token,
-            body={"p_session_id": session_id},
+            "POST", "/rest/v1/rpc/finish_motion_round" if motion else "/rest/v1/rpc/end_training_session", token=token,
+            body={"p_session_id": session_id, "p_report": body['motion_report']} if motion else {"p_session_id": session_id},
         )
         if not rows:
             raise CentralGatewayError("운동 기록을 종료할 권한이 없습니다.", HTTPStatus.FORBIDDEN)
@@ -642,8 +671,11 @@ class SupabaseGateway:
                 payload = json.loads(raw)
             except json.JSONDecodeError:
                 payload = {}
-            message = translate_remote_error(error.code, payload)
-            raise CentralGatewayError(message, HTTPStatus(error.code), raw) from error
+            status = error.code
+            if path.startswith("/rest/v1/rpc/") and status == 500 and payload.get("code") == "P0002":
+                status = HTTPStatus.NOT_FOUND
+            message = translate_remote_error(status, payload)
+            raise CentralGatewayError(message, HTTPStatus(status), raw) from error
         except (URLError, TimeoutError) as error:
             raise CentralGatewayError(
                 "중앙 서버에 연결할 수 없습니다. 인터넷 연결을 확인해주세요.",

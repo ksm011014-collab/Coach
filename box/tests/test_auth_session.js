@@ -4,9 +4,10 @@ const vm = require('node:vm');
 const source = fs.readFileSync('web/scripts/auth-shell.js', 'utf8');
 function setup() {
   const saved = [];
-  const context = {state:{token:'old',refreshToken:'refresh-old'}, Date, console,
+  const context = {state:{token:'old',refreshToken:'refresh-old'}, Date, console, window:{},
     authSessionStorage:{save:async value=>saved.push(value),clear:async()=>saved.push(null)}};
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync('web/scripts/i18n.js', 'utf8'), context);
   vm.runInContext(source,context);
   return {context,saved};
 }

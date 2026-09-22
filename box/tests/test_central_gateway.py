@@ -1,5 +1,8 @@
 import os
+import io
+import json
 import unittest
+from urllib.error import HTTPError
 from unittest.mock import patch
 
 from backend.central_gateway import (
@@ -22,6 +25,47 @@ class FakeGateway(SupabaseGateway):
 
 
 class CentralGatewayTests(unittest.TestCase):
+    def test_motion_round_uses_guarded_rpc(self):
+        report = {"version": 1, "events": [], "status": "unavailable"}
+        gateway = FakeGateway([[{"id": "session-id", "user_id": "member", "center_id": "center", "feedback_report": report}]])
+        gateway.end_session("access", "session-id", {"motion_report": report})
+        self.assertEqual(gateway.calls[0][1], "/rest/v1/rpc/finish_motion_round")
+        self.assertEqual(gateway.calls[0][2]["body"], {"p_session_id": "session-id", "p_report": report})
+        self.assertEqual(gateway.calls[0][2]["token"], "access")
+
+    def test_rpc_missing_row_maps_to_not_found_without_hiding_server_failures(self):
+        gateway = SupabaseGateway(CentralGatewayConfig("https://project.supabase.co", "publishable"))
+        for code, expected in (("P0002", 404), ("XX000", 500)):
+            with self.subTest(code=code):
+                error = HTTPError("https://project.supabase.co/rest/v1/rpc/operations_mutate", 500, "Error", {}, io.BytesIO(json.dumps({'code': code, 'message': 'member not found'}).encode()))
+                with patch('backend.central_gateway.urlopen', side_effect=error):
+                    with self.assertRaises(CentralGatewayError) as caught:
+                        gateway.operations_mutate('access', {'operation': 'member.update', 'input': {'id': 'foreign-member'}, 'request_id': 'test'})
+                self.assertEqual(caught.exception.status, expected)
+                if expected == 404:
+                    self.assertEqual(str(caught.exception), '요청한 정보를 찾을 수 없습니다.')
+
+    def test_operations_rpc_route_and_occurrence_month_summary(self):
+        gateway = FakeGateway([{'referenceDate': '2026-01-15', 'members': [{'id': 'member', 'joined_on': '2025-01-01'}],
+            'products': [], 'passes': [], 'attendance': [], 'notes': [],
+            'payments': [{'paid_on': '2025-12-01', 'amount': 100, 'adjustments': [{'action': 'REFUND', 'on': '2026-01-01', 'amount': 20}]}]}])
+        payload, status = gateway.route('GET', '/api/operations', None, 'date=2026-01-14', 'Bearer access')
+        self.assertEqual(status, 200)
+        self.assertEqual(payload['roster']['absent'], 1)
+        self.assertEqual(payload['revenue'][-1]['net'], -20)
+        self.assertEqual(gateway.calls[0][1], '/rest/v1/rpc/operations_snapshot')
+        self.assertEqual(gateway.calls[0][2]['token'], 'access')
+        gateway = FakeGateway([{'id': 'product'}])
+        payload, status = gateway.route('POST', '/api/operations', {'operation': 'product.save', 'input': {'name': 'Product'}, 'request_id': 'stable'}, '', 'Bearer access')
+        self.assertEqual(payload['result']['id'], 'product')
+        self.assertEqual(gateway.calls[0][2]['body']['p_request_id'], 'stable')
+        self.assertTrue(SupabaseGateway.handles('POST', '/api/operations'))
+        gateway = FakeGateway([{'result': {'id': 'registered-member'}}])
+        result = gateway.operations_mutate('access', {'operation': 'member.create', 'input': {'name': 'Synthetic'}, 'request_id': 'registration-key'})
+        self.assertEqual(result['result']['id'], 'registered-member')
+        self.assertEqual(gateway.calls[0][1], '/functions/v1/register-member')
+        self.assertEqual(gateway.calls[0][2]['body']['request_id'], 'registration-key')
+
     def test_missing_resource_ids_return_not_found_without_remote_calls(self):
         gateway = FakeGateway([])
         for path in ("/api/members/", "/api/sessions/", "/api/sessions//end"):

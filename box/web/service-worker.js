@@ -1,4 +1,4 @@
-const CACHE_NAME = "boxingcoach-shell-2026-09-18-1";
+const CACHE_NAME = "boxingcoach-shell-2026-09-23-1";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -6,10 +6,13 @@ const APP_SHELL = [
   "/styles.css",
   "/styles/operations.css",
   "/scripts/center.js",
+  "/scripts/i18n.js",
   "/scripts/operations-service.js",
   "/scripts/operations-ui.js",
   "/scripts/operations-commerce.js",
   "/scripts/operations-shell.js",
+  "/scripts/operations-views.js",
+  "/scripts/operations-people.js",
   "/scripts/operations-live.js",
   "/app.js",
   "/manifest.webmanifest",
@@ -26,6 +29,17 @@ const APP_SHELL = [
   "/scripts/preferences.js",
   "/scripts/pwa.js",
   "/scripts/session.js",
+  "/scripts/motion-session.js",
+  "/scripts/motion-pipeline.mjs",
+  "/scripts/motion-skeleton.mjs",
+  "/scripts/motion-worker.js",
+  "/scripts/motion-round.mjs",
+  "/scripts/motion-features.mjs",
+  "/scripts/motion-recognizer.mjs",
+  "/scripts/round-coach.js",
+  "/scripts/coach-conversation.mjs",
+  "/scripts/coach-voice.mjs",
+  "/styles/round-coach.css",
   "/scripts/storage.js",
   "/scripts/utils.js"
 ];

@@ -1,8 +1,10 @@
 function defaultSettings() {
   return {
     theme: "dark",
+    language: "ko",
     notifications: false,
     sound: true,
+    motionFeedback: "summary",
   };
 }
 
@@ -18,6 +20,7 @@ function saveSettings() {
 
 function applyTheme() {
   document.documentElement.dataset.theme = state.settings.theme;
+  BoxingI18n.setLanguage(state.settings.language);
 }
 
 function defaultCameraSetup() {
@@ -112,7 +115,7 @@ function renderCameraRigSettings() {
       <article class="admin-board settings-panel camera-rig-panel">
         <div class="settings-heading">
           <small>카메라 구성</small>
-          <h3>카메라 설정</h3><p>미리보기와 녹화에 사용할 장치를 선택합니다.</p>
+          <h3>카메라 설정</h3>
         </div>
         <div class="segmented camera-count-segment">
           ${[1, 2, 3].map((count) => `<button class="${setup.targetCount === count ? "active" : ""}" data-camera-count="${count}">${count}대</button>`).join("")}
@@ -235,9 +238,17 @@ function renderSettings() {
   $("#viewContent").innerHTML = `
     <section class="settings-layout">
       <article class="admin-board settings-panel">
+        <label class="setting-row" for="languageSetting"><strong>${t("언어")}</strong>
+          <select id="languageSetting">
+            <option value="ko" ${BoxingI18n.language === "ko" ? "selected" : ""}>한국어</option>
+            <option value="en" ${BoxingI18n.language === "en" ? "selected" : ""}>English</option>
+          </select>
+        </label>
+      </article>
+      <article class="admin-board settings-panel">
         <div class="settings-heading">
           <small>Theme</small>
-          <h3>테마 설정</h3>
+          <h3>${t("테마 설정")}</h3>
         </div>
         <div class="segmented setting-segment">
           ${settingButton("dark", "다크테마", state.settings.theme === "dark", "theme")}
@@ -248,47 +259,65 @@ function renderSettings() {
       <article class="admin-board settings-panel">
         <div class="settings-heading">
           <small>Alerts</small>
-          <h3>알림</h3>
-          <p>세션 종료 알림과 시작·종료 신호음을 설정합니다.</p>
+          <h3>${t("알림")}</h3>
+
         </div>
         <label class="setting-row">
-          <span><strong>세션 알림</strong><small>${notificationState}</small></span>
+          <span><strong>${t("세션 알림")}</strong><small>${t(notificationState)}</small></span>
           <input type="checkbox" data-setting-toggle="notifications" ${state.settings.notifications ? "checked" : ""} />
         </label>
 
         <label class="setting-row">
-          <span><strong>효과음</strong><small>세션 시작/종료 신호음</small></span>
+          <span><strong>${t("효과음")}</strong><small>${t("세션 시작/종료 신호음")}</small></span>
           <input type="checkbox" data-setting-toggle="sound" ${state.settings.sound ? "checked" : ""} />
         </label>
         <div class="settings-actions">
-          <button id="requestNotifications">알림 권한 요청</button>
-          <button id="testSound">효과음 테스트</button>
+          <button id="requestNotifications">${t("알림 권한 요청")}</button>
+          <button id="testSound">${t("효과음 테스트")}</button>
         </div>
       </article>
 
-      ${renderCameraRigSettings()}
+      <article class="admin-board settings-panel">
+        <div class="settings-heading"><h3>${t("운동 피드백")}</h3></div>
+        <label class="setting-row"><span>${t("표시 방식")}</span><select id="motionFeedbackMode">
+          <option value="summary" ${state.settings.motionFeedback !== "event" ? "selected" : ""}>${t("5초 요약")}</option>
+          <option value="event" ${state.settings.motionFeedback === "event" ? "selected" : ""}>${t("동작별 · 시험")}</option>
+        </select></label>
+      </article>
 
       <article class="admin-board settings-panel">
         <div class="settings-heading">
           <small>Account</small>
-          <h3>계정 설정</h3>
+          <h3>${t("계정 설정")}</h3>
           <p>${escapeHtml(state.user.username)} · ${roleLabel(state.user.role)} · ${escapeHtml(state.user.center_name || state.center.name)}</p>
         </div>
         <div class="account-summary">
-          <span>현재 계정</span>
+          <span>${t("현재 계정")}</span>
           <strong>${escapeHtml(state.profile?.name || state.user.name || "")}</strong>
-          <button id="editAccountInfo" class="ghost small-button">정보 수정</button>
+          <button id="editAccountInfo" class="ghost small-button">${t("정보 수정")}</button>
         </div>
       </article>
 
-      <p><a href="/preview.html" target="_blank" rel="noopener">개발용 관리 화면 미리보기</a> · 합성 데이터만 사용하는 별도 화면입니다.</p>
+      <p><a href="/preview.html" target="_blank" rel="noopener">${t("개발용 관리 화면 미리보기")}</a></p>
       <div class="settings-footer">
-        <button id="saveAllSettings">설정 저장</button>
-        <button id="resetSettings" class="ghost">초기화</button>
+        <button id="saveAllSettings">${t("설정 저장")}</button>
+        <button id="resetSettings" class="ghost">${t("초기화")}</button>
       </div>
-      <p id="settingsMessage" class="form-message settings-message">${state.settingsMessage}</p>
+      <p id="settingsMessage" class="form-message settings-message">${escapeHtml(t(state.settingsMessage))}</p>
     </section>`;
 
+  $("#languageSetting").addEventListener("change", event => {
+    state.settings.language = event.target.value === "en" ? "en" : "ko";
+    saveSettings();
+    setSettingsMessage("언어 설정을 저장했습니다.");
+    renderApp();
+    $("#languageSetting").focus();
+  });
+  $("#motionFeedbackMode").addEventListener("change", event => {
+    state.settings.motionFeedback = event.target.value === "event" ? "event" : "summary";
+    saveSettings();
+    setSettingsMessage("피드백 설정을 저장했습니다. 다음 라운드부터 적용됩니다.");
+  });
   document.querySelectorAll("[data-setting-theme]").forEach((button) => {
     button.addEventListener("click", () => {
       state.settings.theme = button.dataset.settingTheme;
@@ -308,15 +337,13 @@ function renderSettings() {
   });
   $("#requestNotifications").addEventListener("click", requestNotifications);
   $("#testSound").addEventListener("click", () => playTone(720));
-  bindCameraRigSettings();
   $("#editAccountInfo").addEventListener("click", openAccountModal);
   $("#saveAllSettings").addEventListener("click", saveAllSettings);
   $("#resetSettings").addEventListener("click", resetSettings);
-  if (state.accountModalOpen) renderAccountModal();
 }
 
 function settingButton(value, label, active, name) {
-  return `<button class="${active ? "active" : ""}" data-setting-${name}="${value}">${label}</button>`;
+  return `<button class="${active ? "active" : ""}" data-setting-${name}="${value}">${t(label)}</button>`;
 }
 
 function setSettingsMessage(message) {

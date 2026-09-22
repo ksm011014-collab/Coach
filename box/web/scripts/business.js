@@ -1,78 +1,22 @@
 function openAccountModal() {
-  state.accountModalOpen = true;
-  renderSettings();
-}
-
-function closeAccountModal() {
-  state.accountModalOpen = false;
-  const modal = $("#accountModal");
-  if (modal) modal.remove();
-}
-
-function renderAccountModal() {
-  closeAccountModal();
-  state.accountModalOpen = true;
-  const profile = state.profile || {};
-  const modal = document.createElement("div");
-  modal.id = "accountModal";
-  modal.className = "modal-backdrop";
-  modal.innerHTML = `
-    <div class="confirm-modal account-modal">
-      <strong>관리자 정보 수정</strong>
-      <form id="accountEditForm" class="account-edit-form">
-        <label class="center-field"><span>이름</span><input name="name" value="${escapeHtml(profile.name || state.user.name || "")}" required /></label>
-        <label class="center-field"><span>전화번호</span><input name="phone" value="${escapeHtml(profile.phone || "")}" /></label>
-        <label class="center-field"><span>성별</span><select name="gender">
-          ${profileOption("", "성별 선택", profile.gender)}
-          ${profileOption("male", "남성", profile.gender)}
-          ${profileOption("female", "여성", profile.gender)}
-          ${profileOption("other", "기타", profile.gender)}
-        </select></label>
-        <label class="center-field"><span>키</span><select name="height_cm">${numberOptions(140, 210, Number(profile.height_cm || 170), "cm")}</select></label>
-        <label class="center-field"><span>몸무게</span><select name="weight_kg">${numberOptions(40, 140, Number(profile.weight_kg || 70), "kg")}</select></label>
-        <label class="center-field"><span>스탠스</span><select name="stance">
-          ${profileOption("orthodox", "오소독스", profile.stance)}
-          ${profileOption("southpaw", "사우스포", profile.stance)}
-        </select></label>
-        <label class="center-field full"><span>기본 정보</span><textarea name="injury_note">${escapeHtml(profile.injury_note || "")}</textarea></label>
-        <p id="accountEditMessage" class="form-message"></p>
-        <div class="modal-actions">
-          <button>수정 완료</button>
-          <button type="button" class="ghost" id="closeAccountModal">취소</button>
-        </div>
-      </form>
-    </div>`;
-  document.body.appendChild(modal);
-  $("#accountEditForm").addEventListener("submit", saveAccountFromModal);
-  $("#closeAccountModal").addEventListener("click", closeAccountModal);
-  modal.addEventListener("click", (event) => {
-    if (event.target.id === "accountModal") closeAccountModal();
+  const profile = state.profile;
+  if (!profile?.id) { setSettingsMessage(t("수정할 프로필이 없습니다.")); renderSettings(); return; }
+  const U = OperationsUI;
+  const F = U.field;
+  U.modal({
+    title: t("내 프로필 수정"),
+    content: F("name", t("이름"), profile.name || state.user.name, { max: 100 }) + F("phone", t("전화번호"), profile.phone, { required: false, max: 30 }) + F("gender", t("성별"), profile.gender, { required: false, options: [["", t("선택 안 함")], ["male", t("남성")], ["female", t("여성")], ["other", t("기타")]] }) + F("height_cm", t("키 (cm)"), profile.height_cm || "", { type: "number", required: false }) + F("weight_kg", t("몸무게 (kg)"), profile.weight_kg || "", { type: "number", required: false }) + F("stance", t("스탠스"), profile.stance || "orthodox", { options: [["orthodox", t("오소독스")], ["southpaw", t("사우스포")]] }) + F("injury_note", t("주의 사항"), profile.injury_note, { multiline: true, required: false, max: 2000 }),
+    save: async values => {
+      for (const key of ["height_cm", "weight_kg"]) {
+        if (values[key] === "") delete values[key];
+        else values[key] = Number(values[key]);
+      }
+      const result = await api(`/members/${encodeURIComponent(profile.id)}`, { method: "PATCH", body: JSON.stringify(values) });
+      state.profile = result.member;
+      state.user.name = result.member.name || state.user.name;
+    },
+    onSaved: () => { setSettingsMessage(t("프로필을 수정했습니다.")); renderSettings(); },
   });
-}
-
-async function saveAccountFromModal(event) {
-  event.preventDefault();
-  const profileId = state.profile?.id;
-  if (!profileId) return;
-  const body = Object.fromEntries(new FormData(event.currentTarget).entries());
-  ["height_cm", "weight_kg"].forEach((key) => {
-    body[key] = Number(body[key] || 0);
-  });
-  try {
-    const result = await api(`/members/${profileId}`, {
-      method: "PATCH",
-      body: JSON.stringify(body),
-    });
-    state.profile = result.member;
-    state.user.name = result.member.name || state.user.name;
-    state.center.owner = state.user.name;
-    saveCenterProfile();
-    setSettingsMessage("관리자 정보를 수정했습니다.");
-    closeAccountModal();
-    renderApp();
-  } catch (error) {
-    $("#accountEditMessage").textContent = error.message;
-  }
 }
 
 async function logout() {
@@ -83,7 +27,7 @@ async function logout() {
   }
   stopCamera();
   try { await logoutAuthSession(); }
-  catch (error) { showSessionError(new Error(`서버 로그아웃 실패: ${error.message}. 다시 시도해주세요.`)); return; }
+  catch (error) { showSessionError(new Error(t("서버 로그아웃 실패: {error}. 다시 시도해주세요.", { error: error.message }))); return; }
   location.reload();
 }
 

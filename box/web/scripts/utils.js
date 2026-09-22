@@ -10,14 +10,6 @@ function isValidPassword(value) {
   return String(value || "").length >= 8 && /[^A-Za-z0-9]/.test(value);
 }
 
-function numberOptions(start, end, selected, suffix = "") {
-  const options = [];
-  for (let value = start; value <= end; value++) {
-    options.push(`<option value="${value}" ${Number(selected) === value ? "selected" : ""}>${value}${suffix}</option>`);
-  }
-  return options.join("");
-}
-
 function memberTrainingLevel(member) {
   const value = Number(member?.training_level || 1);
   return Number.isFinite(value) ? Math.max(1, Math.min(5, Math.round(value))) : 1;

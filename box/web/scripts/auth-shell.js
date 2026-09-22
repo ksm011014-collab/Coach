@@ -12,7 +12,7 @@ async function api(path, options = {}, allowRefresh = true) {
     return api(path, options, false);
   }
   if (!response.ok) {
-    const error = new Error(payload.error || localizedApiError(response.status));
+    const error = new Error(t(payload.error || localizedApiError(response.status)));
     error.status = response.status;
     throw error;
   }
@@ -29,17 +29,17 @@ async function refreshAuthSession() {
 async function performAuthRefresh() {
   const generation = authSessionGeneration;
   const refreshToken = state.refreshToken;
-  if (!refreshToken) throw new Error("다시 로그인해주세요.");
+  if (!refreshToken) throw new Error(t("다시 로그인해주세요."));
   const response = await fetch("/api/auth/refresh", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ refresh_token: refreshToken }),
   });
   const payload = await response.json().catch(() => ({}));
-  if (generation !== authSessionGeneration) throw new Error("로그인 상태가 변경되었습니다.");
+  if (generation !== authSessionGeneration) throw new Error(t("로그인 상태가 변경되었습니다."));
   if (!response.ok || !payload.token) {
     if ([400, 401, 403].includes(response.status)) await clearAuthSession();
-    throw new Error(payload.error || "로그인이 만료되었습니다. 다시 로그인해주세요.");
+    throw new Error(t(payload.error || "로그인이 만료되었습니다. 다시 로그인해주세요."));
   }
   await applyAuthSession(payload);
 }
@@ -57,6 +57,9 @@ async function applyAuthSession(payload) {
 }
 
 async function clearAuthSession() {
+  window.RoundCoach?.clear();
+  window.MotionSession?.clear();
+  state.pendingSessionEnd = null;
   authSessionGeneration += 1;
   state.token = null;
   state.refreshToken = null;
@@ -79,10 +82,10 @@ async function logoutAuthSession() {
 }
 
 function localizedApiError(status) {
-  if (status === 401) return "로그인이 필요합니다.";
-  if (status === 403) return "이 작업을 수행할 권한이 없습니다.";
-  if (status === 503) return "중앙 서버에 연결할 수 없습니다. 인터넷 연결을 확인해주세요.";
-  return "요청을 처리하지 못했습니다.";
+  if (status === 401) return t("로그인이 필요합니다.");
+  if (status === 403) return t("이 작업을 수행할 권한이 없습니다.");
+  if (status === 503) return t("중앙 서버에 연결할 수 없습니다. 인터넷 연결을 확인해주세요.");
+  return t("요청을 처리하지 못했습니다.");
 }
 
 async function login(username, password) {
@@ -101,19 +104,19 @@ async function signup(form) {
   body.username = normalizeUsername(body.username);
   body.center_code = normalizeCenterCode(body.center_code);
   if (state.usernameChecked !== body.username) {
-    throw new Error("아이디 중복 확인을 먼저 해주세요.");
+    throw new Error(t("아이디 중복 확인을 먼저 해주세요."));
   }
   if (body.role === "OWNER" && !String(body.center_name || "").trim()) {
-    throw new Error("관리자 가입은 센터명이 필요합니다.");
+    throw new Error(t("관리자 가입은 센터명이 필요합니다."));
   }
   if (body.role === "MEMBER" && !body.center_code) {
-    throw new Error("회원 가입은 센터 코드가 필요합니다.");
+    throw new Error(t("회원 가입은 센터 코드가 필요합니다."));
   }
   if (body.password !== body.password_confirm) {
-    throw new Error("비밀번호 확인이 일치하지 않습니다.");
+    throw new Error(t("비밀번호 확인이 일치하지 않습니다."));
   }
   if (!isValidPassword(body.password)) {
-    throw new Error("비밀번호는 특수문자를 포함해 8자리 이상이어야 합니다.");
+    throw new Error(t("비밀번호는 특수문자를 포함해 8자리 이상이어야 합니다."));
   }
   const payload = await api("/auth/signup", {
     method: "POST",
@@ -181,7 +184,7 @@ function renderApp() {
   $("#workspace").classList.toggle("hidden", state.activeView === "coach");
   $("#hud").classList.toggle("hidden", state.activeView !== "coach");
   $("#userName").textContent = `${state.user.name} · ${roleLabel(state.user.role)}`;
-  $("#sidebarToggle").title = state.sidebarCollapsed ? "사이드바 열기" : "사이드바 접기";
+  $("#sidebarToggle").title = t(state.sidebarCollapsed ? t("사이드바 열기") : "사이드바 접기");
   renderNav();
   renderView();
   updateSessionControls();
@@ -198,15 +201,15 @@ function renderAuthForm() {
   const extras =
     state.authMode === "signup"
       ? ""
-      : `<label class="remember-row"><input type="checkbox" name="remember" /> <span>아이디 저장</span></label>`;
+      : `<label class="remember-row"><input type="checkbox" name="remember" /> <span>${t("아이디 저장")}</span></label>`;
   const links =
     state.authMode === "signup"
-      ? `<div class="signup-actions"><button id="authSubmit">${config.button}</button><button type="button" class="back-button" data-auth-link="member">뒤로가기</button></div>`
-      : `<div class="auth-links"><button type="button" class="link-button" data-auth-link="signup">센터/회원 가입하기</button><span></span><button type="button" class="link-button">비밀번호 찾기</button></div>`;
+      ? `<div class="signup-actions"><button id="authSubmit">${t(config.button)}</button><button type="button" class="back-button" data-auth-link="member">${t("뒤로가기")}</button></div>`
+      : `<div class="auth-links"><button type="button" class="link-button" data-auth-link="signup">${t("센터/회원 가입하기")}</button><span></span><button type="button" class="link-button">${t("비밀번호 찾기")}</button></div>`;
   $("#loginForm").innerHTML = [
     ...config.fields.map(renderField),
     extras,
-    state.authMode === "signup" ? "" : `<button id="authSubmit">${config.button}</button>`,
+    state.authMode === "signup" ? "" : `<button id="authSubmit">${t(config.button)}</button>`,
     links,
     `<p id="authMessage" class="form-message"></p>`,
   ].join("");
@@ -230,22 +233,22 @@ function renderField(field) {
       ? field.options.filter(([value]) => value !== "OWNER")
       : field.options;
     return `<select name="${field.name}"${roleAttrs} required>${options
-      .map(([value, label]) => `<option value="${value}">${label}</option>`)
+      .map(([value, label]) => `<option value="${value}">${t(label)}</option>`)
       .join("")}</select>`;
   }
-  const input = `<input name="${field.name}" value="${field.value}" type="${field.type}" placeholder="${field.placeholder}" autocomplete="off"${roleAttrs} required />`;
+  const input = `<input name="${field.name}" value="${field.value}" type="${field.type}" placeholder="${escapeHtml(t(field.placeholder))}" autocomplete="off"${roleAttrs} required />`;
   if (!field.withCheck) return input;
-  return `<div class="username-row">${input}<button type="button" id="checkUsernameButton">중복 확인</button></div>`;
+  return `<div class="username-row">${input}<button type="button" id="checkUsernameButton">${t("중복 확인")}</button></div>`;
 }
 
 function roleLabel(role) {
-  return {
+  return t({
     PLATFORM_ADMIN: "플랫폼 관리자",
     CENTER_OWNER: "센터 관리자",
     COACH: "코치",
     OWNER: "관리자",
     MEMBER: "회원",
-  }[role] || role;
+  }[role] || role);
 }
 
 function syncCenterFromAccount() {
@@ -279,24 +282,24 @@ async function checkUsername() {
   const username = normalizeUsername(input.value);
   $("#authMessage").textContent = "";
   if (!/^[a-z0-9_]{4,20}$/.test(username)) {
-    $("#authMessage").textContent = "아이디는 영문 소문자, 숫자, _ 조합 4-20자리입니다.";
+    $("#authMessage").textContent = t("아이디는 영문 소문자, 숫자, _ 조합 4-20자리입니다.");
     return;
   }
   const result = await api(`/auth/check-username?username=${encodeURIComponent(username)}`);
   if (!result.available) {
     state.usernameChecked = "";
-    $("#authMessage").textContent = "이미 사용 중인 아이디입니다.";
+    $("#authMessage").textContent = t("이미 사용 중인 아이디입니다.");
     return;
   }
   state.usernameChecked = username;
   input.value = username;
-  $("#authMessage").textContent = "사용 가능한 아이디입니다.";
+  $("#authMessage").textContent = t("사용 가능한 아이디입니다.");
 }
 
 function renderNav() {
   const visible = navigationForRole(state.user.role);
   $("#nav").innerHTML = visible
-    .map(([key, label]) => `<button class="nav-item ${state.activeView === key ? "active" : ""}" data-view="${key}" title="${label}">${svgIcon(navIcons[key])}<span class="nav-label">${label}</span></button>`)
+    .map(([key, label]) => `<button class="nav-item ${state.activeView === key ? "active" : ""}" data-view="${key}" title="${t(label)}">${svgIcon(navIcons[key])}<span class="nav-label">${t(label)}</span></button>`)
     .join("");
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => {
@@ -319,23 +322,23 @@ function normalizeActiveView() {
 
 function renderView() {
   const titleMap = {
-    platformOps: "중앙 관제",
+    platformOps: t("중앙 관제"),
     dashboard: "대시보드",
     center: "센터 정보",
-    members: "회원 관리",
+    members: t("회원 관리"),
     staff: "직원",
     accounts: "계정 권한",
-    attendance: "출석",
+    attendance: t("출석"),
     memberships: "회원권",
     payments: "수납",
     workouts: "운동 기록",
     memberHome: "내 이용 현황",
-    memberWorkouts: "운동 현황",
-    memberAttendance: "출석",
+    memberWorkouts: t("운동 현황"),
+    memberAttendance: t("출석"),
     memberProfile: "정보 변경",
-    settings: "설정",
+    settings: t("설정"),
   };
-  $("#viewTitle").textContent = titleMap[state.activeView] || "대시보드";
+  $("#viewTitle").textContent = t(titleMap[state.activeView] || "대시보드");
   if (state.activeView === "platformOps") renderPlatformOperations();
   if (state.activeView === "dashboard") renderOperationalView("dashboard");
   if (state.activeView === "center") renderCenterInfo();

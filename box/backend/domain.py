@@ -20,12 +20,14 @@ from typing import Any
 
 try:
     from profile_input import validate_profile_patch
+    from operations_schema import install_operations_schema, center_now
 except ModuleNotFoundError:
     from backend.profile_input import validate_profile_patch
+    from backend.operations_schema import install_operations_schema, center_now
 
 
 SECRET = os.environ.get("BOXING_COACH_TOKEN_SECRET") or secrets.token_urlsafe(48)
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 3
 ROLES = {"OWNER", "PLATFORM_ADMIN", "CENTER_OWNER", "COACH", "MEMBER"}
 
 
@@ -277,6 +279,7 @@ class Store:
             self.backfill_gym_codes()
             self.conn.execute("create unique index if not exists idx_users_username on users(username)")
             self.conn.execute("create unique index if not exists idx_gyms_code on gyms(code)")
+            install_operations_schema(self.conn)
             self.conn.execute(f"pragma user_version = {SCHEMA_VERSION}")
 
     def ensure_column(self, table: str, column: str, definition: str) -> None:
@@ -439,6 +442,9 @@ class Store:
                     profile.training_level,
                 ),
             )
+            if user.role == "MEMBER":
+                self.conn.execute("insert or ignore into operation_members(member_id,center_id,joined_on) values(?,?,?)",
+                                  (user.id, user.gym_id, center_now(self.conn, user.gym_id)[:10]))
         return profile
 
     @locked
@@ -477,7 +483,7 @@ class Store:
             )
         return profile
 
-    def patch_profile(self, actor: User, profile_id: str, body: dict) -> MemberProfile:
+    def patch_profile(self, actor: User, profile_id: str, body: dict, *, bump_operation_version: bool = True) -> MemberProfile:
         with self.transaction():
             current = self.get_user(actor.id)
             profile = self.get_profile(profile_id)
@@ -485,10 +491,18 @@ class Store:
                 raise PermissionError("member is outside your mutation scope")
             if current.role == "MEMBER" and {"reach_cm", "training_level"}.intersection(body):
                 raise PermissionError("members cannot change reach or training level")
+            metadata = self.conn.execute("select * from operation_members where member_id=?", (profile.user_id,)).fetchone()
+            if metadata and metadata["deleted_on"]:
+                raise PermissionError("deleted member profile is read-only")
             values = validate_profile_patch(body)
             if values.get("birthdate", "") is None:
                 values["birthdate"] = ""
-            return self.update_profile(dataclasses.replace(profile, **values))
+            updated = self.update_profile(dataclasses.replace(profile, **values))
+            if metadata and bump_operation_version:
+                self.conn.execute("update operation_members set version=version+1 where member_id=?", (profile.user_id,))
+                self.conn.execute("insert into operation_audit values(?,?,?,?,?,?,?,?)", (secrets.token_hex(16), profile.gym_id, current.id,
+                    "member.profile_update", profile.user_id, json.dumps(serialize(profile)), json.dumps(serialize(updated)), center_now(self.conn, profile.gym_id)))
+            return updated
 
 
     def create_session(self, session: TrainingSession) -> TrainingSession:
@@ -610,6 +624,9 @@ class Store:
                 raise PermissionError("cannot change current account access")
             if actor.role != "PLATFORM_ADMIN" and (target.gym_id != actor.gym_id or target.role not in {"COACH", "MEMBER"} or role not in {"COACH", "MEMBER"}):
                 raise PermissionError("target account is outside your access scope")
+            deleted = self.conn.execute("select deleted_on from operation_members where member_id=?", (target.id,)).fetchone()
+            if deleted and deleted["deleted_on"] and status == "ACTIVE":
+                raise ValueError("deleted member cannot be reactivated through account permissions")
             if (role, status) == (target.role, target.status):
                 return target
             self.conn.execute("update users set role=?, status=?, token_version=token_version+1 where id=?", (role, status, target.id))

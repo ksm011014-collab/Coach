@@ -6,3 +6,6 @@ uri = "pg-functions://postgres/public/custom_access_token_hook"
 
 [functions.admin-create-user]
 verify_jwt = true
+
+[functions.register-member]
+verify_jwt = true

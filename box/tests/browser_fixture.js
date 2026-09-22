@@ -4,6 +4,13 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { chromium } = require("playwright");
 
+async function stopTestServer(server) {
+  if (server.exitCode !== null) return;
+  const ended = new Promise(resolve => server.once("exit", resolve));
+  process.kill(server.workerPid || server.pid);
+  await ended;
+}
+
 async function browserFixture() {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "boxing-frontend-test-"));
   const server = spawn(process.env.BOXING_COACH_PYTHON || "python", ["-B", "-u", "backend/server.py"], {
@@ -12,10 +19,7 @@ async function browserFixture() {
   let browser;
   async function close() {
     if (browser) await browser.close();
-    if (server.exitCode === null) {
-      const ended = new Promise(resolve => server.once("exit", resolve));
-      server.kill(); await ended;
-    }
+    await stopTestServer(server);
     fs.rmSync(directory, { recursive: true, force: true });
   }
   try {
@@ -27,7 +31,7 @@ async function browserFixture() {
       server.stdout.on("data", chunk => {
         output += chunk;
         const match = output.match(/BOXING_COACH_READY (.*)\r?\n/);
-        if (match) { clearTimeout(timeout); resolve(JSON.parse(match[1]).url); }
+        if (match) { const ready = JSON.parse(match[1]); server.workerPid = ready.pid; clearTimeout(timeout); resolve(ready.url); }
       });
       server.stderr.on("data", () => {});
     });
@@ -48,4 +52,4 @@ async function browserFixture() {
     return { page, context, url, login, close };
   } catch (error) { await close(); throw error; }
 }
-module.exports = { browserFixture };
+module.exports = { browserFixture, stopTestServer };

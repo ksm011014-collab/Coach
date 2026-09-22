@@ -22,7 +22,7 @@ def upgrade_database(database: Path, backup: Path) -> bool:
         version = source.execute("pragma user_version").fetchone()[0]
         if version == SCHEMA_VERSION:
             return False
-        if version != 0:
+        if version not in (0, 1, 2):
             raise ValueError("Unsupported SQLite schema version")
         # Reserve the path atomically: a concurrently created backup must never
         # be overwritten between the existence check and sqlite3.connect.
@@ -57,6 +57,7 @@ def upgrade_database(database: Path, backup: Path) -> bool:
                 store.conn.execute("drop table users")
                 store.conn.execute("alter table users_upgrade rename to users")
                 store.conn.execute("create unique index idx_users_username on users(username)")
+                store.conn.execute("create unique index idx_users_center_identity on users(id, gym_id)")
             if store.conn.execute("pragma foreign_key_check").fetchone():
                 raise ValueError("Legacy data has invalid foreign keys; migration rolled back")
     finally:

@@ -11,6 +11,7 @@ def capabilities(data_mode: str, *, local: bool) -> dict:
         "engine_version": ENGINE_VERSION,
         "data_mode": data_mode,
         "analysis": {"available": False, "status": "not_installed"},
+        "motion_reports": {"versions": [1], "source": "device_estimate"},
         "camera": {"owner": "device", "capture": "browser"},
         "recording_conversion": {"owner": "local_worker", "route_available": local},
     }
