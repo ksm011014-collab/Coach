@@ -7,6 +7,7 @@ import { verifyOperationsPolicies } from './operations_policies.mjs';
 import { verifyOperationsRpc } from './operations_rpc.mjs';
 import { verifyOperationsRegistration } from './operations_registration.mjs';
 import { verifyMotionRounds } from './motion_rounds.mjs';
+import { verifyCoachService } from './coach_service.mjs';
 
 // Supabase's auth schema is external to repository migrations. Only its SQL
 // identity boundary is simulated here; GoTrue/PostgREST are separate staging gates.
@@ -75,6 +76,7 @@ try {
   await verifyOperationsRpc(db, asUser, id);
   await verifyOperationsRegistration(db, asUser, id);
   await verifyMotionRounds(db, asUser, id);
+  await verifyCoachService(db, asUser, id);
   for (const actor of [11,12,13]) {
     assert.equal((await asUser(id(actor),patchSql,[id(40),JSON.stringify({phone:'123'})])).rows[0].phone,'123');
   }

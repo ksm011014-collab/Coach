@@ -8,6 +8,7 @@ Maintain separate staging and production Supabase projects, web/API deployments,
 
 1. Apply every migration under `supabase/migrations/` in filename order.
 2. Deploy `supabase/functions/admin-create-user` with JWT verification enabled.
+   Deploy `register-member` as well. For the AI feature, follow `AI_COACH_DEPLOYMENT.md` for `coach-chat`, allowed models and server-only secrets.
 3. Store `SUPABASE_SERVICE_ROLE_KEY` only as an Edge Function secret.
 4. Create and verify a staging `PLATFORM_ADMIN` account.
 5. Run cross-center allow/deny tests for every role.
@@ -98,3 +99,9 @@ Hosted mode disables the offline API adapter and blocks navigation outside the c
 - Signing and release URLs are correct.
 - No service-role key, password, token, personal export, or certificate secret appears in client artifacts or logs.
 - An authorized operator explicitly approves production deployment and data migration.
+
+## September 23 status
+
+The existing `boxingcoach-staging` project was observed Healthy in the dashboard with `motion_tracking_evidence` as the latest migration. Local PostgreSQL and Python regression tests pass; this is separate from a fresh deployed integration test. The checkout lacks the prior ignored staging settings file. New AI code is prepared, not deployed. Restore the existing configuration rather than creating a new project.
+
+Prepare the pinned browser pose assets before packaging or hosted deployment, using `tools/prepare_motion_assets.py` and the runtime installation documented in `refoundation/07-motion-coaching.md`. A source-only checkout does not include ignored `web/vendor/motion` files. Verify manifest hashes and serve WASM with its proper MIME type. Missing pose assets must leave recording/time tracking available and display an unavailable status.

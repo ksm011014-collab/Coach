@@ -30,7 +30,7 @@ function escapeHtml(value) {
 
 function formatDateTime(seconds) {
   if (!seconds) return "-";
-  return new Date(seconds * 1000).toLocaleString("ko-KR", {
+  return new Date(seconds * 1000).toLocaleString(BoxingI18n.language === 'en' ? 'en-US' : 'ko-KR', {
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

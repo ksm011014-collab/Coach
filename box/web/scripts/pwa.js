@@ -18,8 +18,8 @@
     }
     const blocked = sessionIsActive();
     message.textContent = blocked
-      ? "진행 중인 운동을 종료하면 업데이트할 수 있습니다."
-      : "지금 적용하면 새 웹 화면으로 다시 시작합니다.";
+      ? t("진행 중인 운동을 종료하면 업데이트할 수 있습니다.")
+      : t("지금 적용하면 새 웹 화면으로 다시 시작합니다.");
     applyButton.disabled = blocked;
     banner.classList.remove("hidden");
   };

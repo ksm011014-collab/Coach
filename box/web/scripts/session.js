@@ -19,7 +19,7 @@ async function startSessionCameras(cameraConfig = activeCameraConfig()) {
       const camera = { ...configured };
       if (!camera.device_id && sources.length) {
         const available = (await enumerateVideoDevices()).find(device => !usedDevices.has(device.deviceId));
-        if (!available) throw new Error("설정한 대수만큼 카메라가 연결되어 있지 않습니다.");
+        if (!available) throw new Error(t("설정한 대수만큼 카메라가 연결되어 있지 않습니다."));
         camera.device_id = available.deviceId;
       }
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -37,7 +37,7 @@ async function startSessionCameras(cameraConfig = activeCameraConfig()) {
         video,
       });
       const actualDevice = stream.getVideoTracks()[0]?.getSettings().deviceId || camera.device_id;
-      if (actualDevice && usedDevices.has(actualDevice)) throw new Error("같은 카메라를 중복 선택했습니다.");
+      if (actualDevice && usedDevices.has(actualDevice)) throw new Error(t("같은 카메라를 중복 선택했습니다."));
       if (actualDevice) {
         usedDevices.add(actualDevice);
         camera.device_id = actualDevice;
@@ -124,7 +124,7 @@ function waitForVideoReady(video) {
     };
     const failed = () => {
       cleanup();
-      reject(new Error("카메라 미리보기를 시작할 수 없습니다."));
+      reject(new Error(t("카메라 미리보기를 시작할 수 없습니다.")));
     };
     const done = () => {
       cleanup();
@@ -153,7 +153,7 @@ function stopCamera() {
   $("#cameraPreview").classList.remove("hidden");
   $("#cameraFallback").classList.remove("hidden");
   $("#cameraOffline").classList.remove("hidden");
-  $("#cameraStatus").textContent = "카메라 대기";
+  $("#cameraStatus").textContent = t("카메라 대기");
   state.recordingStream = null;
   state.sessionCameraSources = [];
 }
@@ -164,13 +164,13 @@ function startRecording() {
   state.recordingError = "";
   state.recordedChunks = [];
   if (!window.MediaRecorder) {
-    state.recordingError = "이 브라우저는 운동 녹화를 지원하지 않습니다.";
-    $("#sessionMessage").textContent = `${state.recordingError} 세션 기록만 저장됩니다.`;
+    state.recordingError = t("이 브라우저는 운동 녹화를 지원하지 않습니다.");
+    $("#sessionMessage").textContent = t("{error} 세션 기록만 저장됩니다.", {error: state.recordingError});
     return;
   }
   if (!state.recordingStream) {
-    state.recordingError = "카메라 스트림이 없습니다.";
-    $("#sessionMessage").textContent = `${state.recordingError} 세션 기록만 저장됩니다.`;
+    state.recordingError = t("카메라 스트림이 없습니다.");
+    $("#sessionMessage").textContent = t("{error} 세션 기록만 저장됩니다.", {error: state.recordingError});
     return;
   }
   const recorder = new MediaRecorder(state.recordingStream, preferredRecordingOptions());
@@ -181,12 +181,12 @@ function startRecording() {
     });
     recorder.addEventListener("error", () => {
       capture.interrupted = true;
-      $("#sessionMessage").textContent = "녹화 오류로 중단되었습니다. 운동 종료 시 수신한 녹화 데이터를 보존합니다.";
+      $("#sessionMessage").textContent = t("녹화 오류로 중단되었습니다. 운동 종료 시 수신한 녹화 데이터를 보존합니다.");
     });
     recorder.addEventListener("stop", () => {
       if (!capture.requestedStop) {
         capture.interrupted = true;
-        $("#sessionMessage").textContent = "녹화가 중단되었습니다. 운동을 종료하여 수신한 데이터를 저장하세요.";
+        $("#sessionMessage").textContent = t("녹화가 중단되었습니다. 운동을 종료하여 수신한 데이터를 저장하세요.");
       }
       resolve();
     }, { once: true });
@@ -220,7 +220,7 @@ async function stopRecording(sessionId) {
     await capture.stopped;
     const blob = new Blob(capture.chunks, { type: capture.recorder.mimeType || "video/webm" });
     if (!blob.size) {
-      state.recordingError = "녹화 데이터가 없습니다. 카메라와 녹화 지원 상태를 확인하세요.";
+      state.recordingError = t("녹화 데이터가 없습니다. 카메라와 녹화 지원 상태를 확인하세요.");
       throw new Error(state.recordingError);
     }
     const recording = {
@@ -258,7 +258,7 @@ async function saveRecording(recording) {
     await new Promise((resolve, reject) => {
       const transaction = db.transaction("recordings", "readwrite");
       transaction.oncomplete = resolve;
-      transaction.onabort = () => reject(transaction.error || new Error("녹화 저장이 취소되었습니다."));
+      transaction.onabort = () => reject(transaction.error || new Error(t("녹화 저장이 취소되었습니다.")));
       transaction.onerror = () => reject(transaction.error);
       transaction.objectStore("recordings").put(recording);
     });
@@ -291,7 +291,7 @@ async function deleteRecording(sessionId) {
     await new Promise((resolve, reject) => {
       const transaction = db.transaction("recordings", "readwrite");
       transaction.oncomplete = resolve;
-      transaction.onabort = () => reject(transaction.error || new Error("녹화 삭제 트랜잭션이 취소되었습니다."));
+      transaction.onabort = () => reject(transaction.error || new Error(t("녹화 삭제 트랜잭션이 취소되었습니다.")));
       transaction.onerror = () => reject(transaction.error);
       transaction.objectStore("recordings").delete(sessionId);
     });
@@ -300,11 +300,11 @@ async function deleteRecording(sessionId) {
 
 function playRecording(sessionId) {
   const recording = state.localRecordings[sessionId];
-  if (!recording) throw new Error("이 장치의 녹화 파일을 찾을 수 없습니다.");
+  if (!recording) throw new Error(t("이 장치의 녹화 파일을 찾을 수 없습니다."));
   const url = URL.createObjectURL(recording.blob);
   const viewer = window.open("", "_blank", "width=900,height=640");
-  if (!viewer) { URL.revokeObjectURL(url); throw new Error("녹화 창이 차단됐습니다. 팝업을 허용하고 다시 시도하세요."); }
-  viewer.document.write(`<title>운동 녹화</title><video src="${url}" controls autoplay style="width:100%;height:100%;background:#000"></video>`);
+  if (!viewer) { URL.revokeObjectURL(url); throw new Error(t("녹화 창이 차단됐습니다. 팝업을 허용하고 다시 시도하세요.")); }
+  viewer.document.write(`<title>${t("운동 녹화")}</title><video src="${url}" controls autoplay style="width:100%;height:100%;background:#000"></video>`);
   viewer.addEventListener("beforeunload", () => URL.revokeObjectURL(url));
 }
 
@@ -319,7 +319,7 @@ async function downloadRecording(sessionId) {
     const mp4 = await convertRecordingToMp4(recording.blob);
     downloadBlob(mp4, `${sessionId}.mp4`);
   } catch (error) {
-    alert(`${error.message}\n\nMP4 변환을 할 수 없어 원본 WebM 파일로 저장합니다.`);
+    alert(t("{error}\n\nMP4 변환을 할 수 없어 원본 WebM 파일로 저장합니다.", {error: error.message}));
     downloadBlob(recording.blob, `${sessionId}.${recordingExtension(recording.mimeType)}`);
   }
 }
@@ -339,7 +339,7 @@ async function convertRecordingToMp4(blob) {
     body: blob,
   });
   if (!response.ok) {
-    let message = "MP4 변환에 실패했습니다.";
+    let message = t("MP4 변환에 실패했습니다.");
     try {
       const payload = await response.json();
       message = payload.error || payload.detail || message;
@@ -391,7 +391,7 @@ function stopRoundTimer() {
 function updateSessionControls() {
   const isActive = Boolean(state.activeSessionId);
   const coaching = window.RoundCoach?.isBlocking();
-  $("#sessionState").textContent = isActive ? (state.recorder?.state === "recording" ? "녹화 중" : "세션 진행 중") : "대기 중";
+  $("#sessionState").textContent = isActive ? (state.recorder?.state === "recording" ? t("녹화 중") : t("세션 진행 중")) : t("대기 중");
   $("#sessionTimer").textContent = isActive ? sessionTimerText() : "00:00";
   $("#startSessionHud").disabled = isActive || state.sessionBusy || coaching;
   $("#stopSessionHud").disabled = !isActive || state.sessionBusy;
@@ -413,7 +413,7 @@ function formatSeconds(totalSeconds) {
 
 
 function showSessionError(error) {
-  $("#sessionMessage").textContent = error.message || String(error);
+  $("#sessionMessage").textContent = t(error.message || String(error));
 }
 
 async function previewCamera() {
@@ -422,7 +422,7 @@ async function previewCamera() {
   updateSessionControls();
   try {
     const sources = await startSessionCameras();
-    if (sources.length) $("#cameraStatus").textContent = `카메라 ${sources.length}대 연결됨`;
+    if (sources.length) $("#cameraStatus").textContent = t("카메라 {count}대 연결됨", {count: sources.length});
   } finally {
     state.sessionBusy = false;
     updateSessionControls();
@@ -432,10 +432,10 @@ async function previewCamera() {
 async function startSession() {
   if (state.activeSessionId || state.sessionBusy || window.RoundCoach?.isBlocking()) return;
   const member = currentTrainingMember();
-  if (!member) return showSessionError(new Error("운동할 회원을 선택해주세요."));
+  if (!member) return showSessionError(new Error(t("운동할 회원을 선택해주세요.")));
   if (state.pendingSessionStart?.actorId !== state.user.id) state.pendingSessionStart = null;
   if (state.pendingSessionStart && state.pendingSessionStart.body.user_id !== member.user_id) {
-    return showSessionError(new Error("이전 회원의 세션 시작 결과를 확인하지 못했습니다. 해당 회원을 선택하고 시작을 다시 눌러주세요."));
+    return showSessionError(new Error(t("이전 회원의 세션 시작 결과를 확인하지 못했습니다. 해당 회원을 선택하고 시작을 다시 눌러주세요.")));
   }
   state.sessionBusy = true;
   updateSessionControls();
@@ -455,16 +455,16 @@ async function startSession() {
     state.sessions = [created.session, ...state.sessions.filter(session => session.id !== created.session.id)];
     if (created.session.ended_at) {
       stopCamera();
-      return showSessionError(new Error("해당 세션은 이미 종료되었습니다. 새 운동을 시작하려면 시작을 다시 눌러주세요."));
+      return showSessionError(new Error(t("해당 세션은 이미 종료되었습니다. 새 운동을 시작하려면 시작을 다시 눌러주세요.")));
     }
     state.activeSessionId = created.session.id;
     state.pendingSessionEnd = null;
     state.activeSessionStartedAt = created.session.started_at;
     await window.MotionSession?.beginRound(member.stance === 'southpaw' ? 'southpaw' : 'orthodox', state.settings.motionFeedback === 'event' ? 'event' : 'summary');
-    $("#cameraStatus").textContent = `카메라 ${sources.length}대 연결됨`;
-    $("#sessionMessage").textContent = "운동 시간과 녹화를 저장합니다. 동작 점수는 시험 판정입니다.";
-    if (!state.motionReportVersions?.includes(1)) $("#sessionMessage").textContent = "이 서버는 동작 점수 저장을 지원하지 않습니다. 운동 시간과 녹화만 저장합니다. 서버/앱 업데이트가 필요합니다.";
-    try { startRecording(); } catch (error) { state.recordingError = error.message; showSessionError(new Error(`녹화 시작 실패: ${error.message}. 세션 기록은 유지됩니다.`)); }
+    $("#cameraStatus").textContent = t("카메라 {count}대 연결됨", {count: sources.length});
+    $("#sessionMessage").textContent = t("운동 시간과 녹화를 저장합니다. 동작 점수는 시험 판정입니다.");
+    if (!state.motionReportVersions?.includes(1)) $("#sessionMessage").textContent = t("이 서버는 동작 점수 저장을 지원하지 않습니다. 운동 시간과 녹화만 저장합니다. 서버/앱 업데이트가 필요합니다.");
+    try { startRecording(); } catch (error) { state.recordingError = error.message; showSessionError(new Error(t("녹화 시작 실패: {error}. 세션 기록은 유지됩니다.", {error: error.message}))); }
     startSessionTimer();
     startRoundTimer();
     playTone(660);
@@ -501,7 +501,7 @@ async function stopSession(reason = 'manual') {
       const recording = await stopRecording(sessionId);
       if (recording) state.localRecordings[sessionId] = recording;
     } catch (error) {
-      state.recordingError = error.message || '녹화 저장 실패';
+      state.recordingError = error.message || t("녹화 저장 실패");
     }
     stopCamera();
     const result = await api(`/sessions/${sessionId}/end`, { method: "PATCH", body: JSON.stringify(pendingEnd.body) });
@@ -509,20 +509,20 @@ async function stopSession(reason = 'manual') {
     state.activeSessionId = "";
     stopSessionTimer();
     $("#sessionMessage").textContent = state.localRecordings[sessionId]?.persisted === false
-      ? "운동 기록은 저장했지만 녹화 파일을 장치에 저장하지 못했습니다. 이 페이지를 닫기 전에 회원 기록에서 다운로드해주세요."
+      ? t("운동 기록은 저장했지만 녹화 파일을 장치에 저장하지 못했습니다. 이 페이지를 닫기 전에 회원 기록에서 다운로드해주세요.")
       : state.recordingError
-        ? `운동 기록만 저장했습니다. 녹화 저장 실패: ${state.recordingError}`
+        ? t("운동 기록만 저장했습니다. 녹화 저장 실패: {error}", {error: state.recordingError})
       : state.localRecordings[sessionId]?.interrupted
-        ? "운동 기록과 중단 전 녹화를 저장했습니다. 녹화가 전체 운동을 포함하지 않을 수 있습니다."
-        : "운동 기록과 라운드 결과를 저장했습니다.";
-    notifyUser("운동 세션 종료", "운동 기록이 저장되었습니다.");
+        ? t("운동 기록과 중단 전 녹화를 저장했습니다. 녹화가 전체 운동을 포함하지 않을 수 있습니다.")
+        : t("운동 기록과 라운드 결과를 저장했습니다.");
+    notifyUser(t("운동 세션 종료"), t("운동 기록이 저장되었습니다."));
     playTone(420);
     window.RoundCoach?.show(result.session, { onNext: startSession, onChange: updateSessionControls, endReason:pendingEnd.reason });
-    if (pendingEnd.analysisError) $("#sessionMessage").textContent += ' 동작 분석 결과는 저장하지 못했습니다.';
+    if (pendingEnd.analysisError) $("#sessionMessage").textContent += t(" 동작 분석 결과는 저장하지 못했습니다.");
     state.pendingSessionEnd = null;
   } catch (error) {
     stopCamera();
-    showSessionError(new Error(`세션 종료 저장 실패: ${error.message}. 종료 버튼으로 다시 시도해주세요.`));
+    showSessionError(new Error(t("세션 종료 저장 실패: {error}. 종료 버튼으로 다시 시도해주세요.", {error: error.message})));
   } finally {
     state.sessionBusy = false;
     updateSessionControls();

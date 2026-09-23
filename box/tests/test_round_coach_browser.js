@@ -14,27 +14,35 @@ const { browserFixture } = require('./browser_fixture');
     await page.locator('#motionFeedbackMode').selectOption('summary');
     await page.locator('[data-view="coach"]').click();
     fs.mkdirSync('artifacts/round-coach', { recursive: true });
+    for (const language of ['ko', 'en']) {
+    await page.evaluate(language => BoxingI18n.setLanguage(language), language);
     for (const width of [390, 1366]) {
       await page.setViewportSize({ width, height: 900 });
       for (const theme of ['dark', 'light']) {
-        await page.evaluate(({ theme, width }) => {
+        await page.evaluate(({ theme, width, language }) => {
           delete document.body.dataset.theme;
           state.settings.theme = theme;
+          state.settings.language = language;
           applyTheme();
-          RoundCoach.show({ id: `synthetic-${theme}-${width}`, started_at: 100, ended_at: 280,
+          updateSessionControls();
+          showSessionError(new Error('운동할 회원을 선택해주세요.'));
+          RoundCoach.show({ id: `synthetic-${language}-${theme}-${width}`, started_at: 100, ended_at: 280,
             feedback_report:JSON.stringify({version:1,status:'experimental',counts:{jab:2,hook:1,uppercut:0,one_two:1},total_points:38,mean_quality:76,events:[{guard_ratio:1},{guard_ratio:0.2},{guard_ratio:0.3}]}) });
-        }, { theme, width });
+        }, { theme, width, language });
         const dialog = page.locator('#roundCoachDialog');
         await dialog.waitFor({ state: 'visible' });
-        assert.match(await dialog.innerText(), /3분 0초/);
-        assert.match(await dialog.innerText(), /잽 2회/);
-        assert.match(await dialog.innerText(), /누적 38점/);
-        assert.match(await dialog.innerText(), /평균 수행 품질 76/);
-        await dialog.getByText('반복 관측: 2개 동작에서 반대손 가드가 내려간 것으로 감지됐습니다.',{exact:true}).waitFor();
+        assert.match(await dialog.innerText(), language === 'en' ? /3 min 0 sec/ : /3분 0초/);
+        assert.match(await dialog.innerText(), language === 'en' ? /Jabs 2/ : /잽 2회/);
+        assert.match(await dialog.innerText(), language === 'en' ? /Total 38 points/ : /누적 38점/);
+        assert.match(await dialog.innerText(), language === 'en' ? /Average performance quality 76/ : /평균 수행 품질 76/);
+        await dialog.getByText(language === 'en' ? 'Repeated observation: the non-punching hand appeared lowered in 2 movements.' : '반복 관측: 2개 동작에서 반대손 가드가 내려간 것으로 감지됐습니다.',{exact:true}).waitFor();
+        assert.equal(await page.locator('#sessionState').textContent(), language === 'en' ? 'Ready' : '대기 중');
+        assert.equal(await page.locator('#sessionMessage').textContent(), language === 'en' ? 'Select a member to start training.' : '운동할 회원을 선택해주세요.');
+        if (language === 'en') assert.doesNotMatch(await dialog.innerText(), /[가-힣]/);
         assert.equal(await page.locator('#coachQuestion').isDisabled(), true);
         assert.equal(await dialog.evaluate(element=>getComputedStyle(element).backgroundColor),theme==='light'?'rgb(244, 248, 250)':'rgb(7, 28, 39)');
         assert.ok(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1));
-        await page.screenshot({ path: `artifacts/round-coach/popup-${width}-${theme}.png`, fullPage: true });
+        await page.screenshot({ path: `artifacts/round-coach/popup-${language}-${width}-${theme}.png`, fullPage: true });
         await page.keyboard.press('Escape');
         assert.equal(await dialog.isVisible(), true);
         await page.locator('[data-coach-close]').click();
@@ -43,6 +51,8 @@ const { browserFixture } = require('./browser_fixture');
         assert.equal(await page.evaluate(() => RoundCoach.isBlocking()), false);
       }
     }
+    }
+    await page.evaluate(() => BoxingI18n.setLanguage('ko'));
     await page.evaluate(() => {
       RoundCoach.configureService({reply:async request=>{
         window.coachTestRequest={summary:request.summary,question:request.question};

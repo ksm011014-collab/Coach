@@ -21,6 +21,13 @@ function saveSettings() {
 function applyTheme() {
   document.documentElement.dataset.theme = state.settings.theme;
   BoxingI18n.setLanguage(state.settings.language);
+  for (const [selector, source] of [
+    ['#cameraStatus', '카메라 대기'],
+    ['#sessionMessage', '분석 엔진 준비 중 · 카메라와 운동 기록을 사용할 수 있습니다.'],
+  ]) {
+    const element = document.querySelector(selector);
+    if (element && BoxingI18n.isTranslation(element.textContent, source)) element.textContent = t(source);
+  }
 }
 
 function defaultCameraSetup() {
@@ -298,6 +305,10 @@ function renderSettings() {
         </div>
       </article>
 
+      <article class="admin-board settings-panel">
+        <div class="settings-heading"><h3>${t("AI 사용량")}</h3></div>
+        <div id="coachSettingsUsage" role="status">${t("불러오는 중…")}</div>
+      </article>
       <p><a href="/preview.html" target="_blank" rel="noopener">${t("개발용 관리 화면 미리보기")}</a></p>
       <div class="settings-footer">
         <button id="saveAllSettings">${t("설정 저장")}</button>
@@ -340,6 +351,7 @@ function renderSettings() {
   $("#editAccountInfo").addEventListener("click", openAccountModal);
   $("#saveAllSettings").addEventListener("click", saveAllSettings);
   $("#resetSettings").addEventListener("click", resetSettings);
+  window.CoachApi?.renderSettings($("#coachSettingsUsage"));
 }
 
 function settingButton(value, label, active, name) {

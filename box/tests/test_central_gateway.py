@@ -25,6 +25,21 @@ class FakeGateway(SupabaseGateway):
 
 
 class CentralGatewayTests(unittest.TestCase):
+    def test_coach_routes_keep_caller_authorization_and_server_action(self):
+        for method, path, target, expected in [
+            ("GET", "/api/coach/models", "/functions/v1/coach-chat", {"action": "config"}),
+            ("GET", "/api/coach/usage", "/rest/v1/rpc/coach_usage", {}),
+            ("POST", "/api/coach/reply", "/functions/v1/coach-chat", {"action": "reply"}),
+        ]:
+            gateway = FakeGateway([{"ok": True}])
+            self.assertTrue(gateway.handles(method, path))
+            gateway.route(method, path, {"action": "override"}, "", "Bearer caller")
+            self.assertEqual(gateway.calls[0][1], target)
+            self.assertEqual(gateway.calls[0][2]["token"], "caller")
+            self.assertEqual(gateway.calls[0][2]["body"], expected)
+            with self.assertRaises(CentralGatewayError):
+                gateway.route(method, path, {}, "", "")
+
     def test_motion_round_uses_guarded_rpc(self):
         report = {"version": 1, "events": [], "status": "unavailable"}
         gateway = FakeGateway([[{"id": "session-id", "user_id": "member", "center_id": "center", "feedback_report": report}]])

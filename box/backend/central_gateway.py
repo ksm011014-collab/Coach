@@ -81,6 +81,7 @@ class SupabaseGateway:
                 "/api/features",
                 "/api/admin/",
                 "/api/operations",
+                "/api/coach/",
             )
         )
 
@@ -94,6 +95,15 @@ class SupabaseGateway:
     ) -> tuple[dict[str, Any], HTTPStatus]:
         token = self._bearer_token(authorization, required=False)
         body = body or {}
+        if path.startswith("/api/coach/"):
+            token = self._required_token(token)
+            if method == "GET" and path == "/api/coach/models":
+                return self._request("POST", "/functions/v1/coach-chat", token=token, body={"action": "config"}), HTTPStatus.OK
+            if method == "GET" and path == "/api/coach/usage":
+                return self._request("POST", "/rest/v1/rpc/coach_usage", token=token, body={}), HTTPStatus.OK
+            if method == "POST" and path == "/api/coach/reply":
+                return self._request("POST", "/functions/v1/coach-chat", token=token, body={**body, "action": "reply"}), HTTPStatus.OK
+            raise CentralGatewayError("요청한 중앙 API를 찾을 수 없습니다.", HTTPStatus.NOT_FOUND)
         if method == "POST" and path == "/api/auth/login":
             return self.login(body), HTTPStatus.OK
         if method == "POST" and path == "/api/auth/refresh":
@@ -674,7 +684,7 @@ class SupabaseGateway:
             status = error.code
             if path.startswith("/rest/v1/rpc/") and status == 500 and payload.get("code") == "P0002":
                 status = HTTPStatus.NOT_FOUND
-            message = translate_remote_error(status, payload)
+            message = payload.get("error") if path == "/functions/v1/coach-chat" and str(payload.get("error", "")).startswith("coach_") else translate_remote_error(status, payload)
             raise CentralGatewayError(message, HTTPStatus(status), raw) from error
         except (URLError, TimeoutError) as error:
             raise CentralGatewayError(

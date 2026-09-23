@@ -10,6 +10,7 @@ function fixture({analysisError=false,recordingError=false,retry=false}={}) {
   const context=vm.createContext({state,window:{MotionSession:{finishRound:()=>{finishes++;if(analysisError) throw new Error('analysis');return {version:1,duration_ms:500};}},RoundCoach:{show:(session,options)=>calls.push({popup:options.endReason})}},
     Date:{now:()=>2000},$:selector=>elements[selector]||=( {} ),clearTimeout:()=>{},clearInterval:()=>{},
     setTimeout:callback=>{context.timerCallback=callback;return 1;},sessionDurationSecondsFromCenter:()=>1});
+  vm.runInContext(fs.readFileSync('web/scripts/i18n.js','utf8'),context);
   vm.runInContext(fs.readFileSync('web/scripts/session.js','utf8'),context);
   context.updateSessionControls=()=>{};
   context.stopCamera=()=>calls.push({cameraStopped:true});

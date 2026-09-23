@@ -23,7 +23,8 @@ window.RoundCoach = (() => {
         paragraph.textContent = cue;
         summary.appendChild(paragraph);
       }
-      if (!provider) return;
+      const activeProvider = provider || await window.CoachApi?.connect(session, target, () => dialog === target);
+      if (dialog !== target || !activeProvider) return;
       const {CoachVoice} = await import('/scripts/coach-voice.mjs');
       if (dialog !== target) return;
       const input = target.querySelector('textarea');
@@ -35,7 +36,7 @@ window.RoundCoach = (() => {
       const stopVoice = target.querySelector('[data-coach-voice-stop]');
       const voiceStatus = target.querySelector('[data-coach-voice-status]');
       let lastAnswer = '';
-      voice = new CoachVoice({provider:provider.voice,language:window.BoxingI18n?.language || 'ko',onState:state=>{
+      voice = new CoachVoice({provider:activeProvider.voice,language:window.BoxingI18n?.language || 'ko',onState:state=>{
         if (dialog!==target) return;
         const busy = ['preparing-input','preparing-output','listening','playing'].includes(state);
         stopVoice.disabled = !busy;
@@ -50,11 +51,12 @@ window.RoundCoach = (() => {
       microphone.addEventListener('click',()=>voice?.listen());
       playback.addEventListener('click',()=>voice?.speak(lastAnswer));
       stopVoice.addEventListener('click',()=>voice?.stop());
-      conversation = new CoachConversation({provider,session,language:window.BoxingI18n?.language || 'ko',onState:state=>{
+      conversation = new CoachConversation({provider:activeProvider,session,language:window.BoxingI18n?.language || 'ko',onState:(state, errorMessage)=>{
         if (dialog !== target) return;
         input.disabled = send.disabled = state === 'loading';
         microphone.disabled = state === 'loading' || !voice?.supports('listen');
         status.textContent = {loading:t('AI 응답을 기다리고 있습니다.'),ready:t('AI 대화 연결됨 · 질문과 운동 요약이 대화 서비스로 전달됩니다.'),timeout:t('응답 시간이 초과됐습니다. 다시 전송할 수 있습니다.'),error:t('답변을 받지 못했습니다. 다시 전송할 수 있습니다.')}[state];
+        if (state === 'error' && errorMessage) status.textContent = errorMessage;
       },onMessage:message=>{
         if (dialog !== target) return;
         const item = document.createElement('article');
@@ -110,26 +112,36 @@ window.RoundCoach = (() => {
     dialog.setAttribute('aria-labelledby', 'roundCoachTitle');
     dialog.innerHTML = `<div class="round-coach-layout">
       <section class="coach-hologram-panel" aria-label="${t("AI 코치 대기")}">
+        <span class="coach-eyebrow">APEX / ${t("라운드 리뷰")}</span>
+        <h3>${t("다음 라운드를 준비하는 시간")}</h3>
+        <div class="coach-round-duration"><span>${t("운동 시간")}</span><strong data-round-duration></strong></div>
+        <dl class="coach-round-metrics"><div><dt>${t("라운드 점수")}</dt><dd data-round-points></dd></div><div><dt>${t("평균 수행 품질")}</dt><dd data-round-quality></dd></div></dl>
+        <p class="coach-evidence-note">${t("저장된 관측을 바탕으로 돌아봅니다. 감지되지 않은 동작은 평가하지 않습니다.")}</p>
         <div class="coach-hologram" aria-hidden="true"><div class="coach-orbit"></div><div class="coach-core"></div><div class="coach-orbit coach-orbit-cross"></div></div>
         <strong>AI COACH</strong><span data-coach-voice-status role="status">${t("음성 서비스 미연결")}</span>
       </section>
       <section class="coach-conversation">
         <header><h2 id="roundCoachTitle">${t("라운드 피드백")}</h2><button type="button" data-coach-close>${t("채팅 종료")}</button></header>
+        <div class="coach-model-controls"></div>
         <div class="coach-messages" role="log" aria-label="${t("라운드 요약과 대화")}"><article class="coach-message"><strong>${t("운동 기록 요약")}</strong><p data-coach-summary></p><p data-coach-motion></p></article></div>
         <p class="coach-service-status" role="status">${t("AI 대화 서비스가 연결되지 않았습니다.")}</p>
+        <small class="coach-usage"></small><small class="coach-usage-warning" role="status"></small>
         <form class="coach-input"><label for="coachQuestion">${t("질문")}</label><textarea id="coachQuestion" rows="2" placeholder="${t("AI 서비스 연결 후 대화할 수 있습니다")}" disabled></textarea><div><button type="button" data-coach-microphone disabled>${t("음성 입력")}</button><button type="button" data-coach-playback disabled>${t("답변 듣기")}</button><button type="button" data-coach-voice-stop disabled>${t("음성 중단")}</button><button type="submit" disabled>${t("전송")}</button></div></form>
       </section>
     </div>`;
     const duration = Math.max(0, Math.round(session.ended_at - session.started_at));
-    dialog.querySelector('[data-coach-summary]').textContent = `이번 라운드 운동 시간은 ${Math.floor(duration / 60)}분 ${duration % 60}초입니다. 운동 기록을 저장했습니다.`;
     let report;
     try { report = typeof session.feedback_report === 'string' ? JSON.parse(session.feedback_report) : session.feedback_report; } catch (_) {}
     const ending = endReason === 'timer' ? t('설정한 라운드 시간이 끝났습니다.') : endReason === 'manual' ? t('직접 라운드를 종료했습니다.') : '';
     const measuredDuration = report?.version === 1 && Number.isFinite(report.duration_ms) ? Math.floor(report.duration_ms/1000) : duration;
-    dialog.querySelector('[data-coach-summary]').textContent = `${ending} 이번 라운드 운동 시간은 ${Math.floor(measuredDuration/60)}분 ${measuredDuration%60}초입니다. 운동 기록을 저장했습니다.`;
+    dialog.querySelector('[data-round-duration]').textContent = `${String(Math.floor(measuredDuration/60)).padStart(2,'0')}:${String(measuredDuration%60).padStart(2,'0')}`;
+    const assessed = report?.version === 1 && report.status === 'experimental';
+    dialog.querySelector('[data-round-points]').textContent = assessed && Number.isFinite(report.total_points) ? t('{points}점', {points:report.total_points}) : t('평가 없음');
+    dialog.querySelector('[data-round-quality]').textContent = assessed && Number.isFinite(report.mean_quality) ? `${report.mean_quality} / 100` : t('평가 없음');
+    dialog.querySelector('[data-coach-summary]').textContent = [ending, t('이번 라운드 운동 시간은 {minutes}분 {seconds}초입니다. 운동 기록을 저장했습니다.', { minutes: Math.floor(measuredDuration/60), seconds: measuredDuration%60 })].filter(Boolean).join(' ');
     const motionSummary = dialog.querySelector('[data-coach-motion]');
     if (report?.version === 1 && report.status === 'experimental' && report.counts) {
-      motionSummary.textContent = `잽 ${report.counts.jab}회 · 훅 ${report.counts.hook}회 · 어퍼컷 ${report.counts.uppercut}회 · 원투 ${report.counts.one_two}회. 누적 ${report.total_points}점 · 평균 수행 품질 ${report.mean_quality ?? t('평가 없음')}. 시험 판정이며 실제 정확도 검증 전입니다. 인식되지 않은 동작은 실패로 집계하지 않습니다.`;
+      motionSummary.textContent = t('잽 {jab}회 · 훅 {hook}회 · 어퍼컷 {uppercut}회 · 원투 {oneTwo}회. 누적 {points}점 · 평균 수행 품질 {quality}. 시험 판정이며 실제 정확도 검증 전입니다. 인식되지 않은 동작은 실패로 집계하지 않습니다.', { jab: report.counts.jab, hook: report.counts.hook, uppercut: report.counts.uppercut, oneTwo: report.counts.one_two, points: report.total_points, quality: report.mean_quality ?? t('평가 없음') });
     } else {
       motionSummary.textContent = t('평가 가능한 동작 기록이 없습니다. 수행 품질을 평가하지 않았습니다.');
     }

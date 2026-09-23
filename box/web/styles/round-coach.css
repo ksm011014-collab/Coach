@@ -12,30 +12,57 @@
 :is(html, body)[data-theme="light"] .round-coach button { color: #123044; background: #ffffff; border-color: #9cbfce; }
 :is(html, body)[data-theme="light"] .round-coach textarea { color: #234254; background: #e6eef2; border-color: #b6ceda; }
 :is(html, body)[data-theme="light"] .round-coach .coach-message { border-color: #b6ceda; }
-.round-coach-layout { display: grid; grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr); }
-.coach-hologram-panel { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 28px; background: radial-gradient(ellipse, #123c4c, #04131e 75%); color: #a6f9ff; min-height: 360px; }
-.coach-hologram-panel > span { font-size: 13px; }
-.coach-hologram { position: relative; width: 180px; height: 180px; transform: scale(calc(1 + var(--voice-level, 0) * 0.15)); }
-.coach-core { position: absolute; inset: 40px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #d3ffff, #32e0e1 20%, #0d5266 58%, #072533); box-shadow: 0 0 35px #23d8e766, inset 0 0 18px #a1f6ff; }
-.coach-orbit { position: absolute; inset: 7px; border: 1px solid #64e4f8; border-radius: 50%; transform: rotateX(65deg) rotate(-30deg); box-shadow: 0 0 12px #35c6e655; }
+.round-coach-layout { display: grid; grid-template-columns: minmax(240px, 0.7fr) minmax(0, 1.3fr); }
+.coach-hologram-panel { display: flex; flex-direction: column; align-items: flex-start; gap: 16px; padding: 32px; background: #0b2832; color: #e5f5f5; min-height: 360px; }
+.coach-hologram-panel > span { font-size: 12px; color: #a7c4cb; }
+.coach-hologram-panel .coach-eyebrow { letter-spacing: 0.13em; color: #7dd7cd; font-size: 11px; }
+.coach-hologram-panel h3 { margin: 8px 0 12px; font-size: clamp(22px, 2.4vw, 30px); line-height: 1.35; letter-spacing: -0.03em; text-wrap: balance; }
+.coach-round-duration { display: grid; gap: 6px; }
+.coach-round-duration > span { font-size: 12px; color: #a7c4cb; }
+.coach-round-duration strong { font-size: 48px; font-weight: 650; line-height: 1.1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.coach-round-metrics { width: 100%; margin: 8px 0 0; }
+.coach-round-metrics > div { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 8px; padding: 14px 0; border-top: 1px solid #38545e; }
+.coach-round-metrics dt { color: #a7c4cb; font-size: 12px; max-width: 65%; }
+.coach-round-metrics dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.coach-evidence-note { font-size: 12px; line-height: 1.65; color: #a7c4cb; margin: 0; }
+.coach-hologram { align-self: center; position: relative; margin-top: auto; width: 112px; height: 112px; transform: scale(calc(1 + var(--voice-level, 0) * 0.15)); }
+.coach-hologram-panel > strong, .coach-hologram-panel > [data-coach-voice-status] { align-self: center; text-align: center; }
+.coach-hologram-panel > strong { font-size: 12px; letter-spacing: 0.1em; }
+.coach-core { position: absolute; inset: 28%; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #d3ffff, #32c6c1 20%, #0d5266 58%, #072533); box-shadow: 0 0 18px #23d8e733; }
+.coach-orbit { position: absolute; inset: 7px; border: 1px solid #64b9bd; border-radius: 50%; transform: rotateX(65deg) rotate(-30deg); }
 .coach-orbit-cross { transform: rotateY(65deg) rotate(25deg); }
 .coach-conversation { padding: 24px; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
-.coach-conversation header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.coach-conversation header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .coach-conversation h2 { margin: 0; font-size: 20px; }
 .coach-messages { min-height: 180px; max-height: 40dvh; overflow-y: auto; overflow-wrap: anywhere; }
-.coach-message { border: 1px solid var(--line, #286272); border-radius: 12px; padding: 16px; line-height: 1.6; }
+.coach-message { border: 0; border-bottom: 1px solid var(--line, #286272); border-radius: 0; padding: 16px 0; line-height: 1.7; }
+.coach-message:first-child { padding-top: 0; }
 .coach-message p:last-child { margin-bottom: 0; }
 .coach-service-status { margin: 0; font-size: 13px; }
 .coach-input { display: grid; gap: 8px; }
 .coach-input textarea { width: 100%; box-sizing: border-box; resize: vertical; }
+.coach-input textarea, .coach-model-controls select { font: inherit; border-radius: 8px; padding: 10px; }
+.coach-model-controls label { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; font-size: 13px; }
+.coach-model-controls select { flex: 1; min-width: 0; max-width: 100%; }
+.coach-model-controls:empty, .coach-usage:empty, .coach-usage-warning:empty { display: none; }
+.coach-usage, .coach-usage-warning { font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.coach-usage { opacity: .8; }
+.coach-usage-warning { color: var(--danger, #c75252); }
 .coach-input > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
 .round-next-actions { left: 50%; top: 50%; transform: translate(-50%, -50%); display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; width: min(440px, calc(100% - 48px)); }
 .round-next-actions strong { width: 100%; text-align: center; }
 @media (max-width: 640px) {
   .round-coach-layout { grid-template-columns: minmax(0, 1fr); }
-  .coach-hologram-panel { min-height: 100px; padding: 16px; gap: 8px; }
-  .coach-hologram { width: 100px; height: 100px; }
-  .coach-core { inset: 22px; }
+  .coach-hologram-panel { min-height: 0; padding: 20px; gap: 10px; }
+  .coach-hologram-panel h3 { margin: 0; font-size: 22px; }
+  .coach-round-duration { display: flex; width: 100%; align-items: baseline; justify-content: space-between; }
+  .coach-round-duration strong { font-size: 36px; }
+  .coach-round-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0; }
+  .coach-round-metrics > div { padding: 10px 0 0; }
+  .coach-round-metrics dt { max-width: none; }
+  .coach-hologram { width: 56px; height: 56px; margin-top: 0; }
+  .coach-hologram-panel > strong { display: none; }
+  .coach-evidence-note { display: none; }
   .coach-conversation { padding: 16px; }
-  .coach-messages { min-height: 100px; max-height: 24dvh; }
+  .coach-messages { min-height: 100px; max-height: 30dvh; }
 }

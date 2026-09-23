@@ -10,7 +10,7 @@ const desktopBridge = (() => {
     if (!request) return;
     pending.delete(message.id);
     if (message.ok) request.resolve(message.payload ?? null);
-    else request.reject(new Error(message.error || "Windows 요청을 처리하지 못했습니다."));
+    else request.reject(new Error(message.error || t("Windows 요청을 처리하지 못했습니다.")));
   });
 
   return {
@@ -19,7 +19,7 @@ const desktopBridge = (() => {
       return new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           pending.delete(id);
-          reject(new Error("Windows 보안 저장소 응답 시간이 초과되었습니다."));
+          reject(new Error(t("Windows 보안 저장소 응답 시간이 초과되었습니다.")));
         }, 5000);
         pending.set(id, {
           resolve(value) {
@@ -43,13 +43,13 @@ const desktopBridge = (() => {
     async ensureCompatible() {
       const platform = await this.platform();
       if (Number(platform.bridgeProtocol) !== 1) {
-        throw new Error("웹과 Windows 앱의 연결 버전이 맞지 않습니다. Windows 앱을 업데이트하세요.");
+        throw new Error(t("웹과 Windows 앱의 연결 버전이 맞지 않습니다. Windows 앱을 업데이트하세요."));
       }
       if (platform.workerAvailable === false) {
-        throw new Error("로컬 worker의 상태를 확인하지 못했습니다. Windows 앱을 다시 시작해주세요.");
+        throw new Error(t("로컬 worker의 상태를 확인하지 못했습니다. Windows 앱을 다시 시작해주세요."));
       }
       if (!versionAtLeast(platform.engineVersion || "0.0.0", "0.3.0") || platform.capabilities?.contract_version !== 1) {
-        throw new Error("로컬 엔진 버전이 오래되었습니다. Windows 앱을 업데이트하세요.");
+        throw new Error(t("로컬 엔진 버전이 오래되었습니다. Windows 앱을 업데이트하세요."));
       }
       return platform;
     },
@@ -84,10 +84,10 @@ function showDesktopCompatibilityError(error) {
   const button = document.querySelector("#applyWebUpdate");
   if (!banner || !message || !button) return;
   banner.dataset.desktopCompatibility = "error";
-  banner.querySelector("strong").textContent = "Windows 앱 업데이트가 필요합니다.";
-  message.textContent = error.message;
+  banner.querySelector("strong").textContent = t("Windows 앱 업데이트가 필요합니다.");
+  message.textContent = t(error.message);
   button.disabled = true;
-  button.textContent = "업데이트 필요";
+  button.textContent = t("업데이트 필요");
   banner.classList.remove("hidden");
 }
 

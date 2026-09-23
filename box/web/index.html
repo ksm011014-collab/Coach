@@ -41,7 +41,7 @@
               <span></span>
             </div>
             <p class="eyebrow hero-brand">선랑 제이디씨</p>
-            <h1 class="hero-title"><span>센터와 회원의 운동 기록 관리</span><span>에듀·스포츠 B2B SaaS</span></h1>
+            <h1 class="hero-title"><span data-i18n="센터와 회원의 운동 기록 관리">센터와 회원의 운동 기록 관리</span><span data-i18n="에듀·스포츠 B2B SaaS">에듀·스포츠 B2B SaaS</span></h1>
             <div class="hero-status" aria-hidden="true">
               <span>CAMERA</span>
               <span>SESSION</span>
@@ -96,7 +96,7 @@
               <button id="stopSessionHud" class="danger" disabled data-i18n="종료">종료</button>
             </div>
           </article>
-          <article class="overlay motion-score-card" aria-label="라운드 누적 점수"><span data-i18n="라운드 점수">라운드 점수</span><strong id="motionScore">0</strong><small data-i18n="시험 판정">시험 판정</small></article>
+          <article class="overlay motion-score-card" data-i18n-aria-label="라운드 누적 점수" aria-label="라운드 누적 점수"><span data-i18n="라운드 점수">라운드 점수</span><strong id="motionScore">0</strong><small data-i18n="시험 판정">시험 판정</small></article>
           <p id="motionFeedback" class="overlay motion-feedback" role="status"></p>
         </section>
 
@@ -139,6 +139,7 @@
     <script src="/scripts/center.js"></script>
     <script src="/scripts/session.js"></script>
     <script src="/scripts/motion-session.js"></script>
+    <script src="/scripts/coach-api.js"></script>
     <script src="/scripts/round-coach.js"></script>
     <script src="/app.js"></script>
     <script src="/scripts/pwa.js"></script>

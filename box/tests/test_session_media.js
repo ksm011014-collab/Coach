@@ -16,6 +16,7 @@ class Recorder extends EventTarget {
   const message = { textContent: "" };
   const state = { recordingStream: {}, recordedChunks: [], recorder: null };
   const context = vm.createContext({ state, window: { MediaRecorder: Recorder }, MediaRecorder: Recorder, Blob, console, Date, setTimeout, clearTimeout, $: () => message });
+  vm.runInContext(fs.readFileSync(require.resolve("../web/scripts/i18n.js"), "utf8"), context);
   vm.runInContext(fs.readFileSync(require.resolve("../web/scripts/session.js"), "utf8"), context);
   context.saveRecording = async recording => { saved.push(recording); };
   context.startRecording();

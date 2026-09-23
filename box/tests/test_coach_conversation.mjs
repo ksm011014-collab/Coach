@@ -16,6 +16,13 @@ const guarded={...session,feedback_report:{version:1,status:'experimental',event
 assert.deepEqual(coachingSummary(guarded).guard_observations,{evaluated:3,maintained:1,lowered:2});
 assert.match(coachingCues(guarded).join(' '),/반복 관측: 2개/);
 assert.match(coachingCues(guarded).join(' '),/잘된 점: 1개/);
+BoxingI18n.setLanguage('en');
+assert.match(coachingCues(guarded).join(' '), /Repeated observation:.*2 movements/);
+assert.match(coachingCues(guarded).join(' '), /Positive observation:.*1 movements/);
+assert.match(coachingCues(untracked).join(' '), /about 1.5 seconds/);
+assert.match(coachingCues(untracked).join(' '), /0.0–1.5 sec \(Analysis gap\)/);
+assert.doesNotMatch(coachingCues(guarded).join(' '), /[가-힣]/);
+BoxingI18n.setLanguage('ko');
 const displayed=[];
 const states=[];
 let release;

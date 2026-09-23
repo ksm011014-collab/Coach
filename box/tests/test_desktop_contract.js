@@ -8,6 +8,7 @@ async function check(platform,allowed) {
     postMessage:message=>listener({data:{id:message.id,ok:true,payload:platform}})
   }}}};
   vm.createContext(context);
+  vm.runInContext(fs.readFileSync('web/scripts/i18n.js','utf8'),context);
   vm.runInContext(fs.readFileSync('web/scripts/desktop-bridge.js','utf8'),context);
   const result=vm.runInContext('desktopBridge.ensureCompatible()',context);
   if(allowed) await result; else await assert.rejects(result);

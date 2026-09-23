@@ -20,7 +20,7 @@ window.MotionSession = (() => {
     const score = document.querySelector('#motionScore');
     if (score) score.textContent = '0';
     const feedback = document.querySelector('#motionFeedback');
-    if (feedback) feedback.textContent = round ? `${stance === 'southpaw' ? t('사우스포 · 오른손 앞') : t('오소독스 · 왼손 앞')} · 가드를 올리고 준비하세요 · 시험 판정` : t('동작 평가 준비 실패 · 운동 시간과 녹화는 계속 저장합니다');
+    if (feedback) feedback.textContent = round ? t('{stance} · 가드를 올리고 준비하세요 · 시험 판정', {stance:stance === 'southpaw' ? t('사우스포 · 오른손 앞') : t('오소독스 · 왼손 앞')}) : t('동작 평가 준비 실패 · 운동 시간과 녹화는 계속 저장합니다');
   }
 
   function finishRound() {

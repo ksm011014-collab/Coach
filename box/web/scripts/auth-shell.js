@@ -5,15 +5,23 @@ async function api(path, options = {}, allowRefresh = true) {
   const requestToken = state.token;
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
-  const response = await platformApiFetch(path, { ...options, headers });
+  let response;
+  try { response = await platformApiFetch(path, { ...options, headers }); }
+  catch (error) {
+    if (error.name === 'AbortError') throw error;
+    const failure = new Error(t('서버 응답을 받지 못했습니다. 연결을 확인하고 다시 시도해주세요.'));
+    failure.userMessage = failure.message;
+    throw failure;
+  }
   const payload = await response.json().catch(() => ({}));
   if (response.status === 401 && allowRefresh && state.refreshToken && !path.startsWith("/auth/")) {
     if (state.token === requestToken) await refreshAuthSession();
     return api(path, options, false);
   }
   if (!response.ok) {
-    const error = new Error(t(payload.error || localizedApiError(response.status)));
+    const error = new Error(BoxingI18n.error(payload.error, response.status));
     error.status = response.status;
+    error.userMessage = error.message;
     throw error;
   }
   return payload;
@@ -39,7 +47,7 @@ async function performAuthRefresh() {
   if (generation !== authSessionGeneration) throw new Error(t("로그인 상태가 변경되었습니다."));
   if (!response.ok || !payload.token) {
     if ([400, 401, 403].includes(response.status)) await clearAuthSession();
-    throw new Error(t(payload.error || "로그인이 만료되었습니다. 다시 로그인해주세요."));
+    throw new Error(BoxingI18n.error(payload.error, response.status));
   }
   await applyAuthSession(payload);
 }

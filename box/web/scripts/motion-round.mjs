@@ -1,4 +1,5 @@
 import { PunchRecognizer } from './motion-recognizer.mjs';
+import './i18n.js';
 
 const labels = {jab:'잽',hook:'훅',uppercut:'어퍼컷',one_two:'원투'};
 
@@ -88,9 +89,9 @@ export class MotionRound {
     for (const event of events) counts[event.label]=(counts[event.label]||0)+1;
     const guards = events.map(event=>event.evidence?.otherGuard).filter(value=>Number.isFinite(value) && value>=0 && value<=1);
     let cue = '';
-    if (guards.length===events.length && guards.every(value=>value>=0.9)) cue = ' · 반대손 가드를 유지했어요';
-    else if (guards.length>=2 && guards.filter(value=>value<0.5).length>=2) cue = ' · 반대손 가드가 내려간 것으로 감지됐어요. 가드 위치를 확인하세요';
-    const message = Object.entries(counts).map(([label,count])=>`${labels[label]} ${count}회`).join(' · ')+' 감지'+cue+' · 시험 판정';
+    if (guards.length===events.length && guards.every(value=>value>=0.9)) cue = t(' · 반대손 가드를 유지했어요');
+    else if (guards.length>=2 && guards.filter(value=>value<0.5).length>=2) cue = t(' · 반대손 가드가 내려간 것으로 감지됐어요. 가드 위치를 확인하세요');
+    const message = t('{movements} 감지{cue} · 시험 판정', {movements:Object.entries(counts).map(([label,count])=>t('{movement} {count}회', {movement:t(labels[label]),count})).join(' · '),cue});
     if (message===this.lastFeedback) return null;
     this.lastFeedback = message;
     return message;

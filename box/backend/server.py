@@ -182,6 +182,12 @@ class ApiHandler(SimpleHTTPRequestHandler):
                     self.headers.get("Authorization", ""),
                 )
                 self.respond(payload, status)
+            elif method == "GET" and path == "/api/coach/models":
+                self.require_user()
+                self.respond({"available": False, "models": [], "default_model": None, "reason": "central_required"})
+            elif path.startswith("/api/coach/"):
+                self.require_user()
+                self.respond({"error": "coach_central_required"}, HTTPStatus.SERVICE_UNAVAILABLE)
             elif method == "GET" and path == "/api/system/health":
                 self.respond({
                     "status": "ok",

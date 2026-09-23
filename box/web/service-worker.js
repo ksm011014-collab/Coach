@@ -1,4 +1,4 @@
-const CACHE_NAME = "boxingcoach-shell-2026-09-23-1";
+const CACHE_NAME = "boxingcoach-shell-2026-09-23-2";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -38,6 +38,8 @@ const APP_SHELL = [
   "/scripts/motion-recognizer.mjs",
   "/scripts/round-coach.js",
   "/scripts/coach-conversation.mjs",
+  "/scripts/coach-summary.mjs",
+  "/scripts/coach-api.js",
   "/scripts/coach-voice.mjs",
   "/styles/round-coach.css",
   "/scripts/storage.js",

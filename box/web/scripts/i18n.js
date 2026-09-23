@@ -2,6 +2,91 @@
   "use strict";
   if (root.BoxingI18n) return;
   const english = {
+    "라운드 리뷰": "ROUND REVIEW",
+    "다음 라운드를 준비하는 시간": "Make the next round count.",
+    "운동 시간": "Training time",
+    "평균 수행 품질": "Average performance quality",
+    "{points}점": "{points} pts",
+    "저장된 관측을 바탕으로 돌아봅니다. 감지되지 않은 동작은 평가하지 않습니다.": "Review your saved observations. Undetected movements are not assessed.",
+    "AI 사용량": "AI usage",
+    "허용된 모델은 라운드 종료 후 채팅에서 선택할 수 있습니다. 비용 추정은 표시하지 않습니다.": "Choose an allowed model in the after-round chat. Cost estimates are not shown.",
+    "AI 모델": "AI model",
+    "측정되지 않음": "Not measured",
+    "본인": "You", "플랫폼": "Platform", "센터": "Center",
+    "{scope} · {start} ~ {end} UTC · 입력 {input} / 출력 {output} 토큰 · 미측정 요청 {unknown}건": "{scope} · {start} – {end} UTC · Input {input} / Output {output} tokens · {unknown} unmeasured requests",
+    "사용량을 조회하지 못했습니다. 측정값을 확인할 수 없습니다.": "Could not load usage. Measurements are unavailable.",
+    "응답은 받았지만 사용량 저장을 확인하지 못했습니다. 같은 질문을 다시 전송하지 마세요.": "Reply received, but usage storage could not be confirmed. Do not resend the same question.",
+    "AI 서비스가 준비되지 않았습니다. 관리자에게 문의하세요.": "The AI service is not configured. Contact your administrator.",
+    "이 요청은 이미 접수되었습니다. 중복 과금을 막기 위해 다시 전송하지 않았습니다.": "This request was already accepted. It was not sent again to prevent duplicate charges.",
+    "AI 응답을 확인하지 못했습니다. 사용량이 발생했을 수 있습니다.": "The AI response could not be confirmed. Usage may have been incurred.",
+    "AI 대화는 중앙 서비스 연결 후 사용할 수 있습니다.": "AI chat is available after connecting to the central service.",
+    "입력 내용을 확인하고 다시 시도해주세요.": "Check the fields and try again.",
+    "같은 내용이 이미 등록되어 있거나 요청 상태가 변경되었습니다. 다시 조회해주세요.": "This record already exists or the request state has changed. Load the latest data and try again.",
+    "요청이 너무 많습니다. 잠시 후 다시 시도해주세요.": "Too many requests. Please try again shortly.",
+    "서버 응답을 받지 못했습니다. 연결을 확인하고 다시 시도해주세요.": "No server response. Check your connection and try again.",
+    "아이디 또는 비밀번호가 올바르지 않습니다.": "The username or password is incorrect.",
+    "정지된 계정입니다. 센터 관리자에게 문의하세요.": "Your account is suspended. Contact your center administrator.",
+    "이미 사용 중인 아이디입니다.": "This username is already in use.",
+    "이미 사용 중인 이메일입니다.": "This email is already in use.",
+    "유효한 센터 코드를 입력하세요.": "Enter a valid center code.",
+    "아이디는 영문 소문자, 숫자, 밑줄 4~20자로 입력하세요.": "Use 4–20 lowercase letters, numbers or underscores for the username.",
+    "비밀번호는 특수문자를 포함한 8~256자로 입력하세요.": "Use 8–256 characters including a special character for the password.",
+    "요청한 기록을 찾을 수 없습니다.": "The requested record could not be found.",
+    "진행 중인 운동을 종료하면 업데이트할 수 있습니다.": "Finish the current workout to apply the update.",
+    "지금 적용하면 새 웹 화면으로 다시 시작합니다.": "Apply now to restart with the updated web interface.",
+    "Windows 요청을 처리하지 못했습니다.": "Could not process the Windows request.",
+    "Windows 보안 저장소 응답 시간이 초과되었습니다.": "The Windows secure storage request timed out.",
+    "웹과 Windows 앱의 연결 버전이 맞지 않습니다. Windows 앱을 업데이트하세요.": "The web and Windows connection versions are incompatible. Update the Windows app.",
+    "로컬 worker의 상태를 확인하지 못했습니다. Windows 앱을 다시 시작해주세요.": "Could not verify the local worker. Restart the Windows app.",
+    "로컬 엔진 버전이 오래되었습니다. Windows 앱을 업데이트하세요.": "The local engine version is outdated. Update the Windows app.",
+    "Windows 앱 업데이트가 필요합니다.": "Windows app update required.",
+    "업데이트 필요": "Update required",
+    "로컬 데이터를 처리하지 못했습니다. 기존 데이터를 보존한 상태로 복구가 필요합니다.": "Could not process local data. Recovery is required while preserving existing data.",
+    "잽": "Jab", "훅": "Hook", "어퍼컷": "Uppercut", "원투": "One-two",
+    " · 반대손 가드를 유지했어요": " · non-punching hand stayed in guard",
+    " · 반대손 가드가 내려간 것으로 감지됐어요. 가드 위치를 확인하세요": " · non-punching hand appeared lowered. Check your guard position",
+    "{movement} {count}회": "{movement} × {count}",
+    "{movements} 감지{cue} · 시험 판정": "Detected: {movements}{cue} · experimental assessment",
+    "분석 엔진 준비 중 · 카메라와 운동 기록을 사용할 수 있습니다.": "Preparing analysis · camera and workout records are available.",
+    "라운드 누적 점수": "Total round score",
+    "센터와 회원의 운동 기록 관리": "Manage your center and member workouts",
+    "에듀·스포츠 B2B SaaS": "Education & sports B2B SaaS",
+    "설정한 대수만큼 카메라가 연결되어 있지 않습니다.": "Fewer cameras are connected than configured.",
+    "같은 카메라를 중복 선택했습니다.": "The same camera was selected more than once.",
+    "카메라 미리보기를 시작할 수 없습니다.": "Could not start the camera preview.",
+    "카메라 대기": "Camera ready",
+    "이 브라우저는 운동 녹화를 지원하지 않습니다.": "This browser does not support workout recording.",
+    "카메라 스트림이 없습니다.": "No camera stream is available.",
+    "녹화 오류로 중단되었습니다. 운동 종료 시 수신한 녹화 데이터를 보존합니다.": "Recording stopped after an error. Received recording data will be preserved when you finish the workout.",
+    "녹화가 중단되었습니다. 운동을 종료하여 수신한 데이터를 저장하세요.": "Recording stopped. Finish the workout to save the received data.",
+    "녹화 데이터가 없습니다. 카메라와 녹화 지원 상태를 확인하세요.": "No recording data is available. Check your camera and recording support.",
+    "녹화 저장이 취소되었습니다.": "Saving the recording was cancelled.",
+    "녹화 삭제 트랜잭션이 취소되었습니다.": "Deleting the recording was cancelled.",
+    "이 장치의 녹화 파일을 찾을 수 없습니다.": "The recording could not be found on this device.",
+    "녹화 창이 차단됐습니다. 팝업을 허용하고 다시 시도하세요.": "The recording window was blocked. Allow pop-ups and try again.",
+    "MP4 변환에 실패했습니다.": "MP4 conversion failed.",
+    "녹화 중": "Recording",
+    "세션 진행 중": "Session in progress",
+    "대기 중": "Ready",
+    "운동할 회원을 선택해주세요.": "Select a member to start training.",
+    "이전 회원의 세션 시작 결과를 확인하지 못했습니다. 해당 회원을 선택하고 시작을 다시 눌러주세요.": "Could not confirm the previous member's session start. Select that member and press Start again.",
+    "해당 세션은 이미 종료되었습니다. 새 운동을 시작하려면 시작을 다시 눌러주세요.": "This session has already ended. Press Start again to begin a new workout.",
+    "운동 시간과 녹화를 저장합니다. 동작 점수는 시험 판정입니다.": "Workout duration and recording will be saved. Movement scores are experimental.",
+    "이 서버는 동작 점수 저장을 지원하지 않습니다. 운동 시간과 녹화만 저장합니다. 서버/앱 업데이트가 필요합니다.": "This server cannot save movement scores. Only workout duration and recording will be saved. Update the server/app.",
+    "녹화 저장 실패": "Could not save the recording",
+    "운동 기록은 저장했지만 녹화 파일을 장치에 저장하지 못했습니다. 이 페이지를 닫기 전에 회원 기록에서 다운로드해주세요.": "The workout was saved, but the recording could not be saved on this device. Download it from the member history before closing this page.",
+    "운동 기록과 중단 전 녹화를 저장했습니다. 녹화가 전체 운동을 포함하지 않을 수 있습니다.": "The workout and partial recording were saved. The recording may not cover the entire workout.",
+    "운동 기록과 라운드 결과를 저장했습니다.": "Workout and round results saved.",
+    "운동 세션 종료": "Workout finished",
+    "운동 기록이 저장되었습니다.": "Your workout is saved.",
+    " 동작 분석 결과는 저장하지 못했습니다.": " Movement analysis results could not be saved.",
+    "{error} 세션 기록만 저장됩니다.": "{error} Only the session record will be saved.",
+    "카메라 {count}대 연결됨": "{count} cameras connected",
+    "녹화 시작 실패: {error}. 세션 기록은 유지됩니다.": "Recording could not start: {error}. The session record is preserved.",
+    "운동 기록만 저장했습니다. 녹화 저장 실패: {error}": "Only the workout record was saved. Recording could not be saved: {error}",
+    "세션 종료 저장 실패: {error}. 종료 버튼으로 다시 시도해주세요.": "Could not save the session end: {error}. Press Finish to try again.",
+    "{error}\n\nMP4 변환을 할 수 없어 원본 WebM 파일로 저장합니다.": "{error}\n\nMP4 conversion is unavailable. Saving the original WebM file.",
+    "운동 녹화": "Workout recording",
     "대화를 종료한 뒤 서비스를 변경하세요": "Close the conversation before changing the service.",
     "대화 서비스 인터페이스를 확인하세요": "Check the conversation service interface.",
     "음성 대기": "Voice ready",
@@ -513,12 +598,42 @@
     "granted": "Allowed", "denied": "Blocked", "default": "Not requested", "unsupported": "Not supported"
   };
   let language = "ko";
+  const apiErrors = {
+    'coach_unavailable': 'AI 서비스가 준비되지 않았습니다. 관리자에게 문의하세요.',
+    'coach_duplicate': '이 요청은 이미 접수되었습니다. 중복 과금을 막기 위해 다시 전송하지 않았습니다.',
+    'coach_rate_limit': '요청이 너무 많습니다. 잠시 후 다시 시도해주세요.',
+    'coach_denied': '이 작업을 수행할 권한이 없습니다.',
+    'coach_login': '로그인이 필요합니다.',
+    'coach_input': '입력 내용을 확인하고 다시 시도해주세요.',
+    'coach_timeout': 'AI 응답을 확인하지 못했습니다. 사용량이 발생했을 수 있습니다.',
+    'coach_provider': 'AI 응답을 확인하지 못했습니다. 사용량이 발생했을 수 있습니다.',
+    'coach_central_required': 'AI 대화는 중앙 서비스 연결 후 사용할 수 있습니다.',
+    'invalid username or password': '아이디 또는 비밀번호가 올바르지 않습니다.',
+    'Invalid login credentials': '아이디 또는 비밀번호가 올바르지 않습니다.',
+    'account is suspended': '정지된 계정입니다. 센터 관리자에게 문의하세요.',
+    'username already exists': '이미 사용 중인 아이디입니다.',
+    'email already exists': '이미 사용 중인 이메일입니다.',
+    'valid center code is required': '유효한 센터 코드를 입력하세요.',
+    'password confirmation does not match': '비밀번호 확인이 일치하지 않습니다.',
+    'username must be 4-20 lowercase letters, numbers, or underscores': '아이디는 영문 소문자, 숫자, 밑줄 4~20자로 입력하세요.',
+    'password must be 8 to 256 characters and include a special character': '비밀번호는 특수문자를 포함한 8~256자로 입력하세요.',
+    'invalid or expired token': '로그인이 만료되었습니다. 다시 로그인해주세요.',
+    'member not found': '요청한 기록을 찾을 수 없습니다.',
+    'session not found': '요청한 기록을 찾을 수 없습니다.',
+  };
+  function error(message, status) {
+    if (Object.hasOwn(apiErrors, message)) return translate(apiErrors[message]);
+    if (Object.hasOwn(english, message)) return translate(message);
+    const fallback = {400:'입력 내용을 확인하고 다시 시도해주세요.',401:'로그인이 필요합니다.',403:'이 작업을 수행할 권한이 없습니다.',404:'요청한 기록을 찾을 수 없습니다.',409:'같은 내용이 이미 등록되어 있거나 요청 상태가 변경되었습니다. 다시 조회해주세요.',429:'요청이 너무 많습니다. 잠시 후 다시 시도해주세요.',503:'중앙 서버에 연결할 수 없습니다. 인터넷 연결을 확인해주세요.'};
+    return translate(fallback[status] || '요청을 처리하지 못했습니다.');
+  }
   function setLanguage(value) {
     language = value === "en" ? "en" : "ko";
     if (root.document) {
       root.document.documentElement.lang = language;
       root.document.querySelectorAll("[data-i18n]").forEach(element => { element.textContent = translate(element.dataset.i18n); });
       root.document.querySelectorAll("[data-i18n-title]").forEach(element => { element.title = translate(element.dataset.i18nTitle); });
+      root.document.querySelectorAll("[data-i18n-aria-label]").forEach(element => { element.setAttribute('aria-label', translate(element.dataset.i18nAriaLabel)); });
     }
     return language;
   }
@@ -529,6 +644,7 @@
   function weekday(index) {
     return (language === "en" ? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] : ["일", "월", "화", "수", "목", "금", "토"])[index] || "";
   }
-  root.BoxingI18n = Object.freeze({ setLanguage, translate, weekday, get language() { return language; } });
+  function isTranslation(value, source) { return value === source || value === english[source]; }
+  root.BoxingI18n = Object.freeze({ setLanguage, translate, weekday, isTranslation, error, get language() { return language; } });
   root.t = translate;
 })(globalThis);
