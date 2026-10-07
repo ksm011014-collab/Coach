@@ -1,6 +1,16 @@
 # BoxingCoach 인수인계 — 2026-09-25
 
+## 이번 주 우선순위 — 2026-10-07 사용자 지정
+
+- 중앙제어: 세부 기능 범위는 다음 작업에서 구체화한다.
+- 챗봇 이미지 변경: 원하는 이미지와 표현 방식은 다음 작업에서 구체화한다.
+- TTS 변경: 음성 및 엔진 요구사항은 다음 작업에서 구체화한다.
+- 자체 자세 추정 모델 학습은 보류한다. 사용자는 오픈소스 학습 도구가 아니라 기존 사전학습 가중치를 사용하지 않기를 원하며, 복싱 전용 데이터가 아닌 사람 이미지와 관절 좌표 라벨로 학습해도 된다고 명시했다. 자료 조사만 수행했고 다운로드·학습·앱 교체는 진행하지 않았다.
+- 보류 자료: [COCO Keypoints](https://cocodataset.org/#keypoints-2017), [AI-Hub 피트니스 자세 이미지](https://aihub.or.kr/aihubdata/data/view.do?dataSetSn=231), [MPII](https://www.mpi-inf.mpg.de/departments/computer-vision-and-machine-learning/software-and-datasets/mpii-human-pose-dataset/download), [COCO-WholeBody](https://github.com/jin-s13/COCO-WholeBody), [Human3.6M](https://vision.imar.ro/human3.6m/description.php). 재개 시 데이터별 상업 이용 조건과 2D/3D 좌표 요구사항을 확인한다. 2D 학습만으로 현재 깊이 좌표 기반 판정을 그대로 대체할 수 있다고 가정하지 않는다.
+
 ## 최신 작업 상태
+
+2026-10-07 소스 변경: 세션 종료 대화의 원자형 궤도/구체를 문자 없는 SVG 홀로그램으로 교체했다. 정밀 눈금·분할 아크·기어형 링 3개가 90/72/54초 주기로 교차 방향 회전하며, 기존 TTS 실측 음량 콜백으로 중심 진동판과 공명 링의 크기·밝기를 조절한다. 모션 감소 설정은 회전·확대 동작을 끈다. `web/scripts/round-coach.js`, `web/styles/round-coach.css`, 웹 캐시 키를 수정했다. 기존 음성 계약 검사와 소스 컴포넌트 브라우저 렌더링에서 음성 콜백 확대/초기화·반대 회전·중앙 문자 없음·모바일 폭·모션 감소·닫기 정리를 확인했다. 화면 증거는 `box/artifacts/hologram-review/`에 있다. DB/API를 사용하지 않는 렌더 검사이며 연결 배포본/실제 스피커 인수와 구분한다. 실행 중 BoxingCoach 프로세스는 확인되지 않았으며 실행파일 생성·배포·TTS 엔진 변경은 수행하지 않았다.
 
 최신 요청 배포본은 `box/release/BoxingCoach-0.4.5.0-stable/BoxingCoach.Desktop.exe`와 동일 버전 ZIP이다. 텍스트 보고서의 JSON 제거, 탭 바깥 패널 제거, AI 구체 앞뒤 궤도·위성 공전·구체만 음성 반응을 반영했다. 바로가기 갱신 및 포함 소스 일치/ZIP 무결성 검사 완료. 실행 중이던 0.4.4는 종료하지 않았다.
 

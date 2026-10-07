@@ -1,4 +1,4 @@
-const CACHE_NAME = "boxingcoach-shell-2026-09-25-jdc-ui-4";
+const CACHE_NAME = "boxingcoach-shell-2026-10-07-hologram-1";
 const APP_SHELL = [
   "/",
   "/index.html",

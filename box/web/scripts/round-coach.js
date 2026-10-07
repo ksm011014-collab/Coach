@@ -140,8 +140,29 @@ window.RoundCoach = (() => {
     onState();
   }
 
-  function hologramOrbits(layer) {
-    return `<svg class="coach-orbits coach-orbits-${layer}" viewBox="0 0 300 300" aria-hidden="true"><defs><clipPath id="coach-${layer}-clip"><rect x="0" y="${layer === 'back' ? 0 : 150}" width="300" height="150"/></clipPath></defs>${[-28, 66].map((angle, index) => `<g transform="rotate(${angle} 150 150)"><g clip-path="url(#coach-${layer}-clip)"><ellipse cx="150" cy="150" rx="138" ry="52"/><circle class="coach-satellite" r="${index ? 3.5 : 5}"><animateMotion dur="${index ? 24 : 18}s" repeatCount="indefinite" path="M 288 150 A 138 52 0 1 1 12 150 A 138 52 0 1 1 288 150"/></circle></g></g>`).join('')}</svg>`;
+  function hologram() {
+    const ticks = (count, radius, length, majorEvery = 6) => Array.from({length:count}, (_, index) => {
+      const major = index % majorEvery === 0;
+      return `<path class="${major ? 'holo-tick-major' : 'holo-tick'}" transform="rotate(${index * 360 / count} 200 200)" d="M200 ${200 - radius}v${major ? length : length * .45}"/>`;
+    }).join('');
+    const teeth = Array.from({length:60}, (_, index) => `<path transform="rotate(${index * 6} 200 200)" d="M197 54h6v8h-6z"/>`).join('');
+    const vanes = Array.from({length:36}, (_, index) => `<path transform="rotate(${index * 10} 200 200)" d="M197 104l5 1 2 15-5-1z"/>`).join('');
+    return `<svg class="coach-holo-instrument" viewBox="0 0 400 400" aria-hidden="true" focusable="false">
+      <defs>
+        <radialGradient id="coach-holo-field"><stop stop-color="#1588a4" stop-opacity=".22"/><stop offset=".65" stop-color="#09657b" stop-opacity=".09"/><stop offset="1" stop-color="#03202b" stop-opacity="0"/></radialGradient>
+        <radialGradient id="coach-holo-diaphragm" cx="42%" cy="35%"><stop stop-color="#163c4d"/><stop offset=".66" stop-color="#08232f"/><stop offset=".88" stop-color="#0e4d60"/><stop offset="1" stop-color="#041923"/></radialGradient>
+        <linearGradient id="coach-holo-metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d6ffff"/><stop offset=".35" stop-color="#54cedb"/><stop offset=".7" stop-color="#21718e"/><stop offset="1" stop-color="#b4faff"/></linearGradient>
+        <pattern id="coach-holo-mesh" width="6" height="6" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r=".65" fill="#8bdbe5" opacity=".3"/></pattern>
+      </defs>
+      <circle cx="200" cy="200" r="198" fill="url(#coach-holo-field)"/>
+      <g class="holo-registration"><path d="M16 186v-14h14M370 172h14v14M16 214v14h14M370 228h14v-14M186 16h28M186 384h28"/><circle cx="200" cy="200" r="181"/><path d="M200 12v12M200 376v12M12 200h12M376 200h12"/></g>
+      <g class="holo-rotor holo-rotor-outer">${ticks(120,174,10)}<circle class="holo-track" cx="200" cy="200" r="159"/><circle class="holo-arc holo-arc-outer" cx="200" cy="200" r="162" pathLength="360" stroke-dasharray="74 16 32 58 74 16 32 58"/></g>
+      <g class="holo-rotor holo-rotor-geared"><g class="holo-teeth">${teeth}</g><circle class="holo-track" cx="200" cy="200" r="136"/><circle class="holo-arc holo-arc-middle" cx="200" cy="200" r="130" pathLength="360" stroke-dasharray="98 22"/><circle class="holo-fine" cx="200" cy="200" r="123"/></g>
+      <g class="holo-rotor holo-rotor-inner">${ticks(72,116,7)}<circle class="holo-arc holo-arc-inner" cx="200" cy="200" r="103" pathLength="360" stroke-dasharray="42 18"/><g class="holo-vanes">${vanes}</g></g>
+      <g class="holo-resonance"><circle cx="200" cy="200" r="86"/><circle cx="200" cy="200" r="94"/></g>
+      <g class="coach-core"><circle class="holo-core-rim" cx="200" cy="200" r="77"/><circle cx="200" cy="200" r="70" fill="url(#coach-holo-diaphragm)"/><circle cx="200" cy="200" r="65" fill="url(#coach-holo-mesh)"/><circle class="holo-core-contour" cx="200" cy="200" r="61"/><circle class="holo-core-contour" cx="200" cy="200" r="53"/><circle class="holo-core-contour" cx="200" cy="200" r="43"/><circle class="holo-aperture" cx="200" cy="200" r="26"/><circle class="holo-pilot" cx="200" cy="200" r="3"/></g>
+      <g class="holo-indicators"><path d="M194 40h12M194 360h12M40 194v12M360 194v12"/><circle cx="200" cy="46" r="2"/><circle cx="354" cy="200" r="2"/><circle cx="200" cy="354" r="2"/><circle cx="46" cy="200" r="2"/></g>
+    </svg>`;
   }
 
   function show(session, { onNext, onEnd, onChange = () => {}, endReason } = {}) {
@@ -161,7 +182,7 @@ window.RoundCoach = (() => {
         <div class="coach-round-duration"><span>${t("운동 시간")}</span><strong data-round-duration></strong></div>
         <dl class="coach-round-metrics"><div><dt>${t("라운드 점수")}</dt><dd data-round-points></dd></div><div><dt>${t("평균 수행 품질")}</dt><dd data-round-quality></dd></div></dl>
         <p class="coach-evidence-note">${t("저장된 관측을 바탕으로 돌아봅니다. 감지되지 않은 동작은 평가하지 않습니다.")}</p>
-        <div class="coach-hologram" aria-hidden="true">${hologramOrbits('back')}<div class="coach-core"></div>${hologramOrbits('front')}</div>
+        <div class="coach-hologram" aria-hidden="true">${hologram()}</div>
         <strong>AI COACH</strong><span data-coach-voice-status role="status">${t("음성 서비스 미연결")}</span>
       </section>
       <section class="coach-conversation">
