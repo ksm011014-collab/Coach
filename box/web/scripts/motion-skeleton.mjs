@@ -76,3 +76,24 @@ export class SkeletonOverlay {
     this.draw();
   }
 }
+
+export function drawRecordedSkeleton(context, result, width, height) {
+  const points = normalizedSkeleton(result).map(point => point && {x:(1-point.x)*width,y:point.y*height});
+  context.lineWidth = Math.max(2, width / 320);
+  context.strokeStyle = '#30eddb';
+  context.fillStyle = '#ffffff';
+  for (const [start, end] of BONES) {
+    if (!points[start] || !points[end]) continue;
+    context.beginPath();
+    context.moveTo(points[start].x, points[start].y);
+    context.lineTo(points[end].x, points[end].y);
+    context.stroke();
+  }
+  for (const point of points) {
+    if (!point) continue;
+    context.beginPath();
+    context.arc(point.x, point.y, Math.max(3, width / 240), 0, 2 * Math.PI);
+    context.fill();
+  }
+  return points.some(Boolean);
+}

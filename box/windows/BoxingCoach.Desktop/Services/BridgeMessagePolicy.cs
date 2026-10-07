@@ -13,6 +13,9 @@ internal static partial class BridgeMessagePolicy
         "auth.set",
         "auth.clear",
         "platform.get",
+        "speech.voices",
+        "speech.synthesize",
+        "speech.stop",
     };
 
     public static bool IsMessageSizeAllowed(string message) =>

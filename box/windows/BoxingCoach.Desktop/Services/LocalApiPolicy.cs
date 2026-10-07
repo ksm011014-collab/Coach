@@ -8,6 +8,8 @@ internal static class LocalApiPolicy
         new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["/recordings/convert"] = "POST",
+            ["/speech/transcribe/ko"] = "POST",
+            ["/speech/transcribe/en"] = "POST",
         };
 
     public static bool TryMap(Uri requestUri, string method, out string localApiPath)

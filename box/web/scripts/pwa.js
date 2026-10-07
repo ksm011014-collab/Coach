@@ -5,6 +5,7 @@
 
   let waitingWorker = null;
   let reloading = false;
+  let controlled = Boolean(navigator.serviceWorker.controller);
   const banner = document.querySelector("#updateBanner");
   const message = document.querySelector("#updateBannerMessage");
   const applyButton = document.querySelector("#applyWebUpdate");
@@ -31,6 +32,10 @@
   });
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!controlled) {
+      controlled = true;
+      return;
+    }
     if (reloading) return;
     reloading = true;
     window.location.reload();

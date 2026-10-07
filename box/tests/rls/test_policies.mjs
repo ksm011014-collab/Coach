@@ -61,6 +61,20 @@ try {
       [id(n), id(center), `test_${n}`, `Synthetic ${n}`, role]);
   }
   await db.exec('alter table auth.users enable trigger user');
+  const staffUpdate = 'select * from admin_update_staff($1,null,null,$2)';
+  assert.equal((await asUser(id(11), staffUpdate, [id(12), '담당 수업 메모'])).rows[0].id, id(12));
+  assert.equal((await asUser(id(11), staffUpdate, [id(12), '담당 수업 메모'])).rows[0].token_version, 1, 'note-only change preserves login');
+  for (const actor of [12, 13, 16]) await assert.rejects(asUser(id(actor), staffUpdate, [id(12), 'not allowed']));
+  await assert.rejects(asUser(id(11), staffUpdate, [id(13), 'not staff']), {code:'42501'});
+  await assert.rejects(asUser(id(11), staffUpdate, [id(12), 'x'.repeat(2001)]), {code:'22023'});
+  await db.query('insert into staff_notes(account_id,center_id,note) values($1,$2,$3)', [id(12), id(1), 'private staff note']);
+  assert.equal((await asUser(id(11), 'select note from staff_notes')).rows.length, 1);
+  for (const actor of [12, 13, 16]) assert.equal((await asUser(id(actor), 'select note from staff_notes')).rows.length, 0);
+  await assert.rejects(asUser(id(11), "update staff_notes set note='bypass'"), {code:'42501'});
+  await db.query("update accounts set status='SUSPENDED' where id=$1", [id(11)]);
+  await assert.rejects(asUser(id(11), staffUpdate, [id(12), 'suspended actor']), {code:'42501'});
+  assert.equal((await asUser(id(11), 'select note from staff_notes')).rows.length, 0);
+  await db.query("update accounts set status='ACTIVE' where id=$1", [id(11)]);
   const flagSql="select * from platform_set_feature_flag($1,'web.beta',true,'{}','BETA')";
   await asUser(id(10),flagSql,[id(1)],true);
   assert.equal((await asUser(id(13),'select flag_key from feature_flags')).rows.length,1);
@@ -128,6 +142,10 @@ try {
     'select public.save_member_calibration($1,$2::jsonb)', [id(20), '{}']), { code: '42501' });
   const startSql = 'select * from public.start_training_session($1,$2::jsonb,$3,$4)';
   const startArgs = [id(13), '[]', 'free_training', 'repeatable-request'];
+  const ownerStarted = (await asUser(id(11), startSql, [id(13), '[]', 'free_training', 'owner-start-selected-member'])).rows[0];
+  assert.equal(ownerStarted.user_id, id(13), 'owner-started workout belongs to selected member');
+  assert.equal(ownerStarted.center_id, id(1));
+  await assert.rejects(asUser(id(16), startSql, [id(13), '[]', 'free_training', 'owner-wrong-center']), {code:'42501'});
   const first = (await asUser(id(13), startSql, startArgs, true)).rows[0];
   const replay = (await asUser(id(13), startSql, startArgs, true)).rows[0];
   assert.equal(replay.id, first.id);

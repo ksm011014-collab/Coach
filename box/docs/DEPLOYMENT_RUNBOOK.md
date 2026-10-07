@@ -2,6 +2,8 @@
 
 ## Environments
 
+September 25 connected release: `release/BoxingCoach-0.3.1.0-stable/BoxingCoach.Desktop.exe`. Public signup offers center owners (new center only) and members (existing active center code). Apply both `202609250001_center_self_signup.sql` and `202609250002_retire_owner_signup_block.sql` before enabling the new UI. New centers inherit the existing 14-day trial subscription. Platform administrators remain provisioned through the guarded `admin-create-user` function; no shared password is embedded in the application. The requested `admin` account exists on the connected project; its initial credentials are kept only in ignored `artifacts/admin-initial-credentials.json` on the operator's PC and must never be distributed with the release.
+
 Maintain separate staging and production Supabase projects, web/API deployments, release URLs, and signing credentials. Never test migrations or recovery procedures first in production.
 
 ## Staging Gate
@@ -100,8 +102,10 @@ Hosted mode disables the offline API adapter and blocks navigation outside the c
 - No service-role key, password, token, personal export, or certificate secret appears in client artifacts or logs.
 - An authorized operator explicitly approves production deployment and data migration.
 
-## September 23 status
+## September 24 status
 
-The existing `boxingcoach-staging` project was observed Healthy in the dashboard with `motion_tracking_evidence` as the latest migration. Local PostgreSQL and Python regression tests pass; this is separate from a fresh deployed integration test. The checkout lacks the prior ignored staging settings file. New AI code is prepared, not deployed. Restore the existing configuration rather than creating a new project.
+The existing staging project has been reused. The ignored local staging settings are restored, the first 19 migration hashes were verified, and the additive 20th coach migration is applied. The JWT-protected `coach-chat` function is deployed with a server-only provider key and two allowed models. Real synthetic-account checks cover authentication, model configuration, usage, duplicate rejection and cross-center isolation. The Korean/English browser flow through the local central gateway and paid provider also passes; see `AI_COACH_DEPLOYMENT.md` for evidence and the approved test budget.
+
+These checks do not constitute a hosted HTTPS release or production approval. Before promotion, still verify the selected hosted origin, backup restore, signed package and download URLs, and physical WebView2 camera behavior. No production deployment or existing SQLite migration has been performed. The historical September 22 acceptance scope in `refoundation/13-final-audit.md` does not replace the current objective; current sample-video and physical-camera evidence is tracked in `refoundation/14-sample-video-baseline.md`.
 
 Prepare the pinned browser pose assets before packaging or hosted deployment, using `tools/prepare_motion_assets.py` and the runtime installation documented in `refoundation/07-motion-coaching.md`. A source-only checkout does not include ignored `web/vendor/motion` files. Verify manifest hashes and serve WASM with its proper MIME type. Missing pose assets must leave recording/time tracking available and display an unavailable status.

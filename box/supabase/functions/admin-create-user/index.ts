@@ -62,6 +62,10 @@ export default {
     const displayName = String(body.name ?? username).trim();
     const contactEmail = String(body.email ?? "").trim();
     const role = String(body.role ?? "MEMBER").toUpperCase() as AppRole;
+    const staffNote = String(body.staff_note ?? "").trim();
+    if (staffNote.length > 2000 || (staffNote && role !== "COACH")) {
+      return response({ error: "직원 비고는 2000자 이내로 입력하세요." }, 400);
+    }
     const requestedCenterId = body.center_id ? String(body.center_id) : actor.center_id;
 
     if (displayName.length < 1 || displayName.length > 100 || contactEmail.length > 254) {
@@ -134,7 +138,14 @@ export default {
       return response({ error: "계정은 생성되었지만 프로필을 불러오지 못했습니다." }, 500);
     }
 
-    return response({ account }, 201);
+    let noteSaved = true;
+    if (staffNote) {
+      const { error: noteError } = await adminClient.from("staff_notes").insert({
+        account_id: account.id, center_id: account.center_id, note: staffNote,
+      });
+      noteSaved = !noteError;
+    }
+    return response({ account, staff_note_saved: noteSaved }, 201);
   },
 };
 

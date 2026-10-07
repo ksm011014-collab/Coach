@@ -1,6 +1,28 @@
-# BoxingCoach 인수인계 — 2026-09-20
+# BoxingCoach 인수인계 — 2026-09-25
 
-## 현재 결과
+## 최신 작업 상태
+
+최신 요청 배포본은 `box/release/BoxingCoach-0.4.5.0-stable/BoxingCoach.Desktop.exe`와 동일 버전 ZIP이다. 텍스트 보고서의 JSON 제거, 탭 바깥 패널 제거, AI 구체 앞뒤 궤도·위성 공전·구체만 음성 반응을 반영했다. 바로가기 갱신 및 포함 소스 일치/ZIP 무결성 검사 완료. 실행 중이던 0.4.4는 종료하지 않았다.
+
+최신 명시적 생성 요청으로 `box/release/BoxingCoach-0.4.4.0-stable/BoxingCoach.Desktop.exe`와 ZIP을 생성했다. 로그인 배경 무한 재생·로그인 성공 후 3초 확대 전환을 포함하며 바로가기도 갱신했다. 기존 서버 연결 방식 유지, HTTPS UI 전환은 수행하지 않았다. 포함 소스 일치와 ZIP 무결성 및 로그인 검사 통과.
+
+사용자의 명시적 생성 요청에 따라 최신 UI·음성·직원 비고 변경을 포함한 `box/release/BoxingCoach-0.4.3.0-stable/BoxingCoach.Desktop.exe`와 ZIP을 생성하고 바로가기를 갱신했다. 기존 staging 직원 비고 마이그레이션·직원 등록 함수·챗봇 지침 배포와 권한 확인을 완료했다. 실제 하드웨어 인수는 별도이며, 이후 실행파일 생성은 다시 명시적으로 요청받을 때만 수행한다.
+
+JDC 목표는 진행 중이다. 최신 생성 배포본은 `box/release/BoxingCoach-0.4.2.0-stable/BoxingCoach.Desktop.exe`이며 바로가기도 export 스크립트로 갱신했다. 구현·실제 연결 검증·미완료 하드웨어 인수·승인 검토 제한은 `box/docs/JDC_PROGRESS.md`를 먼저 읽는다. 아래 0.3.x 및 이전 완료 기록은 과거 이력이다.
+
+9월 25일 직원관리/로그인 유지 수정: 최신 연결 배포본은 `box/release/BoxingCoach-0.3.3.0-stable/BoxingCoach.Desktop.exe`다. `box/release/BoxingCoach.lnk`도 이 버전을 가리킨다. 직원 메뉴의 준비 중 화면을 실제 센터 코치 계정 목록·등록 폼·상태 변경 UI로 연결했다. 기존 계정 관리 API/RLS를 사용하며 새로운 권한이나 DB 변경은 없다. 앱 시작의 일시적인 조회 실패는 저장된 세션을 지우지 않고 재연결 버튼을 제공한다. PWA 첫 설치의 controllerchange로 로그인 입력이 지워지던 자동 새로고침을 제거했다. 연결 배포 워커에서 실제 센터장 로그인, 직원 화면과 COACH 전용 등록 폼, 재로딩 로그인 복원, 503 모의 응답 시 로그인 보존 및 실제 서버 재연결을 확인했다. 검사 계정/직원 생성이나 데이터 수정은 하지 않았다. Windows DPAPI 저장 코드는 기존 구현을 유지하며 이번 자동 검증은 Chrome으로 배포 UI를 사용했다. Supabase 관리 사이트 로그인은 앱 사용의 전제 조건이 아니다.
+
+9월 25일 실행 경로 확인: 사용자가 센터장 가입이 없다고 보고했을 때 열려 있던 탐색기는 `BoxingCoach-0.3.0.0-stable` 폴더였다. `0.3.1.0`의 실제 Windows WPF/WebView2 창을 직접 실행하고 센터/회원 가입 화면에서 `센터장: 새 센터 개설`과 센터명 입력을 확인했다. `box/release/BoxingCoach.lnk`는 최신 연결 배포본을 가리키며 이후 `export-connected-release.ps1` 실행 시 함께 갱신된다. 구버전 폴더와 DB는 보존했다.
+
+9월 25일 센터장 가입 후속 완료: 최신 연결 배포본은 `box/release/BoxingCoach-0.3.1.0-stable/BoxingCoach.Desktop.exe`와 동일 이름 ZIP이다. 센터장 가입 시 신규 센터·기본 체험 구독·감사 기록을 생성하며 중앙 관리자 공개 가입은 차단한다. 기존 Supabase에 마이그레이션 21·22를 적용했다. 기본 중앙 관리자 `admin`은 기존 권한 검사 API로 생성했고 비밀번호는 배포물에 포함하지 않은 Git 제외 로컬 파일 `box/artifacts/admin-initial-credentials.json`에만 보관한다. 연결 배포본의 가입 UI·admin 중앙 관제 로그인·센터/계정 조회·기존 회원 DB 조회·챗봇 모델/사용량 조회가 통과했다. 실제 DB 트랜잭션 롤백으로 센터 생성·구독·감사·공개 권한 상승 차단·타 센터 격리를 검증했다. 가입 검사용 계정/센터는 남기지 않았다. 이번 검증에서 유료 챗봇 호출은 하지 않았다. Windows 네이티브 창 조작 대신 동일 배포 워커가 제공하는 UI를 Chrome에서 검증했다.
+
+9월 25일 추가 요청: 이후 작업은 DB·챗봇이 연결된 배포 버전을 수정·검증하는 방식으로 진행한다. 별도 SQLite 모드, 미리보기 앱, 테스트 실행파일이나 새 테스트 파일을 만들지 않는다. 현재 연결 배포본은 `box/release/BoxingCoach-0.3.0.0-stable/BoxingCoach.Desktop.exe`이며 같은 이름의 ZIP을 제공한다. 배포본 워커로 중앙 로그인·DB 조회·두 모델 조회·실제 GPT-4.1 mini 응답·사용량 조회를 확인했다. 기존 Supabase 프로젝트를 그대로 사용하며 외부 웹 호스팅/서명 설치 패키지와는 구분한다. 기존 `box/release/BoxingCoach.exe`는 과거 파일이므로 새 배포본 검증에 사용하지 않는다.
+
+현재 인수 기준은 `box/docs/PHASE_ONE_CLOSEOUT.md`다. UI·언어·중앙 DB·실제 챗봇·대화 화면 구현을 확인했고, 9월 25일 Python 117개, 관리/언어/챗봇/녹화 브라우저, PostgreSQL 권한, Windows 빌드·보안 smoke 검사가 통과했다. 기존 Supabase staging과 실제 OpenAI 연결은 완료된 상태이므로 새 프로젝트나 키를 다시 만들지 않는다. 운영 배포는 하지 않았다.
+
+사용자가 모션인식·피드백 개선을 이번 목표에서 제외했다. 해당 작업은 `box/docs/refoundation/14-sample-video-baseline.md`에 인계했으며 추가 분석·촬영·튜닝을 재개하지 않는다. CPU/Lite 기본값을 유지한다. 원본 영상과 기존 DB는 보존한다. 운영 HTTPS 호스트·서명·백업 복원·설치 장치 인수 등 출시 조건은 최종 정리 문서를 따른다.
+
+## 이전 작업 이력 — 아래 완료 범위와 미연결 상태는 당시 기준
 
 최종 완료: 사용자가 진단용 PID1336 프로세스 트리를 종료했다. PID1336/8272 부재와 exec87379 종료를 확인해 정리까지 완료했다. 실제 카메라·녹화본 검증을 제외하고, AI/음성은 미연결 UI·서비스 인터페이스까지라는 사용자 확정 범위로 목표를 완료한다. 요구사항별 증거 및 한계는 box/docs/refoundation/13-final-audit.md, 성능은 12-live-performance.md를 따른다. 아래의 정리 대기/진행 중 기록은 이전 시점의 이력이다.
 

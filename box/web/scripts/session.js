@@ -173,8 +173,11 @@ function startRecording() {
     $("#sessionMessage").textContent = t("{error} 세션 기록만 저장됩니다.", {error: state.recordingError});
     return;
   }
-  const recorder = new MediaRecorder(state.recordingStream, preferredRecordingOptions());
-  const capture = { recorder, chunks: state.recordedChunks, requestedStop: false, interrupted: false, saving: null };
+  const composite = window.MotionSession?.createRecording?.($("#cameraPreview"));
+  let recorder;
+  try { recorder = new MediaRecorder(composite?.stream || state.recordingStream, preferredRecordingOptions()); }
+  catch (error) { composite?.dispose(); throw error; }
+  const capture = { recorder, composite, chunks: state.recordedChunks, requestedStop: false, interrupted: false, saving: null };
   capture.stopped = new Promise(resolve => {
     recorder.addEventListener("dataavailable", event => {
       if (event.data.size > 0) capture.chunks.push(event.data);
@@ -184,6 +187,7 @@ function startRecording() {
       $("#sessionMessage").textContent = t("녹화 오류로 중단되었습니다. 운동 종료 시 수신한 녹화 데이터를 보존합니다.");
     });
     recorder.addEventListener("stop", () => {
+      capture.composite?.dispose();
       if (!capture.requestedStop) {
         capture.interrupted = true;
         $("#sessionMessage").textContent = t("녹화가 중단되었습니다. 운동을 종료하여 수신한 데이터를 저장하세요.");
@@ -194,11 +198,12 @@ function startRecording() {
   recordingCapture = capture;
   state.recorder = recorder;
   try { recorder.start(1000); }
-  catch (error) { recordingCapture = null; state.recorder = null; throw error; }
+  catch (error) { composite?.dispose(); recordingCapture = null; state.recorder = null; throw error; }
 }
 
 function preferredRecordingOptions() {
   const candidates = [
+    "video/mp4;codecs=avc3.42E01E",
     "video/mp4;codecs=avc1.42E01E",
     "video/mp4",
     "video/webm;codecs=vp8",
@@ -225,7 +230,7 @@ async function stopRecording(sessionId) {
     }
     const recording = {
       id: sessionId, mimeType: blob.type, size: blob.size, savedAt: Date.now(),
-      persisted: true, interrupted: capture.interrupted, blob,
+      persisted: true, interrupted: capture.interrupted, blob, ...capture.composite?.metadata(),
     };
     try { await saveRecording(recording); }
     catch (error) { recording.persisted = false; console.warn(error); }
@@ -302,10 +307,23 @@ function playRecording(sessionId) {
   const recording = state.localRecordings[sessionId];
   if (!recording) throw new Error(t("이 장치의 녹화 파일을 찾을 수 없습니다."));
   const url = URL.createObjectURL(recording.blob);
-  const viewer = window.open("", "_blank", "width=900,height=640");
-  if (!viewer) { URL.revokeObjectURL(url); throw new Error(t("녹화 창이 차단됐습니다. 팝업을 허용하고 다시 시도하세요.")); }
-  viewer.document.write(`<title>${t("운동 녹화")}</title><video src="${url}" controls autoplay style="width:100%;height:100%;background:#000"></video>`);
-  viewer.addEventListener("beforeunload", () => URL.revokeObjectURL(url));
+  const viewer = document.createElement('dialog');
+  viewer.className = 'recording-viewer';
+  const title = document.createElement('h2');
+  title.textContent = t('운동 녹화');
+  const note = document.createElement('p');
+  note.textContent = recording.skeletonFrames > 0 ? t('스켈레톤이 포함된 영상입니다.') : t('이 영상에는 저장된 스켈레톤이 없습니다. 과거 영상에 추가할 수 없습니다.');
+  const video = document.createElement('video');
+  video.src = url;
+  video.controls = true;
+  video.autoplay = true;
+  const close = document.createElement('button');
+  close.textContent = t('닫기');
+  close.addEventListener('click',()=>viewer.close());
+  viewer.addEventListener('close',()=>{video.pause();video.removeAttribute('src');video.load();URL.revokeObjectURL(url);viewer.remove();},{once:true});
+  viewer.append(title,note,video,close);
+  document.body.appendChild(viewer);
+  viewer.showModal();
 }
 
 async function downloadRecording(sessionId) {
@@ -322,6 +340,15 @@ async function downloadRecording(sessionId) {
     alert(t("{error}\n\nMP4 변환을 할 수 없어 원본 WebM 파일로 저장합니다.", {error: error.message}));
     downloadBlob(recording.blob, `${sessionId}.${recordingExtension(recording.mimeType)}`);
   }
+}
+
+async function retryRecordingSave(sessionId) {
+  const recording = state.localRecordings[sessionId];
+  if (!recording || !state.sessions.some(session => session.id === sessionId)) throw new Error(t('운동 기록 접근 권한이 없거나 기록을 찾을 수 없습니다.'));
+  if (recording.persisted !== false) return;
+  const saved = {...recording,persisted:true};
+  await saveRecording(saved);
+  state.localRecordings[sessionId] = saved;
 }
 
 function recordingExtension(mimeType = "") {

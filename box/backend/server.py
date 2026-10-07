@@ -25,6 +25,7 @@ try:
     from central_gateway import CentralGatewayError, SupabaseGateway
     from operations import Operations
     from motion_report import finish_motion_round
+    from speech import transcribe
     from domain import (
         CoachLabel,
         MemberProfile,
@@ -47,6 +48,7 @@ except ModuleNotFoundError:
     from backend.central_gateway import CentralGatewayError, SupabaseGateway
     from backend.operations import Operations
     from backend.motion_report import finish_motion_round
+    from backend.speech import transcribe
     from backend.domain import (
         CoachLabel,
         MemberProfile,
@@ -82,6 +84,8 @@ CENTRAL_GATEWAY = SupabaseGateway.from_environment()
 BRIDGE_SECRET = os.environ.get("BOXING_COACH_BRIDGE_SECRET", "")
 LOCAL_BRIDGE_PATHS = {
     "/api/recordings/convert",
+    "/api/speech/transcribe/ko",
+    "/api/speech/transcribe/en",
 }
 MAX_JSON_BODY = 1024 * 1024
 MAX_RECORDING_BODY = 256 * 1024 * 1024
@@ -125,12 +129,15 @@ class ApiHandler(SimpleHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path == "/api/recordings/convert":
+        if path in LOCAL_BRIDGE_PATHS:
             if not self.bridge_request_allowed(path):
                 self.respond({"error": "forbidden local bridge request"}, HTTPStatus.FORBIDDEN)
                 return
             try:
-                self.convert_recording()
+                if path.startswith('/api/speech/transcribe/'):
+                    self.transcribe_speech(path.rsplit('/', 1)[1])
+                else:
+                    self.convert_recording()
             except CentralGatewayError as exc:
                 self.respond({"error": str(exc)}, exc.status)
             except AuthenticationError as exc:
@@ -194,7 +201,7 @@ class ApiHandler(SimpleHTTPRequestHandler):
                     "service": "boxing-coach-local",
                     "version": ENGINE_VERSION,
                     "capabilities": capabilities("supabase" if CENTRAL_GATEWAY else "local", local=True),
-                    "public_center_signup": CENTRAL_GATEWAY is None,
+                    "public_center_signup": True,
                 })
             elif method == "POST" and path == "/api/auth/login":
                 self.login(body or {})
@@ -479,6 +486,18 @@ class ApiHandler(SimpleHTTPRequestHandler):
         STORE.create_label(label)
         self.respond({"label": serialize(label)}, HTTPStatus.CREATED)
 
+
+    def transcribe_speech(self, language: str) -> None:
+        self.require_user()
+        size = int(self.headers.get('Content-Length') or 0)
+        if not 0 < size <= 4 * 1024 * 1024:
+            raise ValueError('speech_invalid_audio')
+        ffmpeg = ffmpeg_executable()
+        if not ffmpeg:
+            raise ValueError('speech_model_missing')
+        assets = Path(sys.executable).resolve().parent / 'speech' if getattr(sys, 'frozen', False) else RESOURCE_ROOT / 'vendor' / 'speech'
+        text = transcribe(self.rfile.read(size), language, assets, ffmpeg)
+        self.respond({'text': text, 'language': language, 'local': True})
 
     def convert_recording(self) -> None:
         self.require_user()

@@ -25,6 +25,23 @@ export async function verifyCoachService(db, asUser, id) {
   await db.exec('set role service_role');
   await db.query(complete,[id(13),id(810),'completed',10,5,15]);
   await db.exec('reset role');
+  const saveTranscript='select coach_save_transcript($1,$2,$3,$4,$5)';
+  const transcriptArgs=[id(13),id(810),'en','How was my round?','Your saved round lasted one minute.'];
+  for (const actor of [10,11,12,13,15]) await assert.rejects(asUser(id(actor),saveTranscript,transcriptArgs),{code:'42501'});
+  await db.exec('set role service_role');
+  await db.query(saveTranscript,transcriptArgs);
+  await db.query(saveTranscript,transcriptArgs);
+  await db.exec('reset role');
+  for (const actor of [11,12,13]) {
+    const transcript=(await asUser(id(actor),'select coach_transcript($1) as result',[id(801)])).rows[0].result;
+    assert.equal(transcript.turns.length,1);
+    assert.equal(transcript.turns[0].question,'How was my round?');
+  }
+  for (const actor of [10,14,15,16]) {
+    await assert.rejects(asUser(id(actor),'select coach_transcript($1)',[id(801)]),{code:'42501'});
+    assert.equal((await asUser(id(actor),'select * from coach_transcripts')).rows.length,0);
+  }
+  await assert.rejects(asUser(id(13),"delete from coach_transcripts"),{code:'42501'});
   for (const [actor,expected] of [[10,15],[11,15],[12,15],[13,15],[14,null],[15,null],[16,null]]) {
     const usage=(await asUser(id(actor),'select coach_usage() as result')).rows[0].result;
     assert.equal(usage.total_tokens,expected);
@@ -42,6 +59,7 @@ export async function verifyCoachService(db, asUser, id) {
   await db.query("update accounts set status='SUSPENDED' where id=$1",[id(13)]);
   await assert.rejects(asUser(id(13),prepare,args),{code:'42501'});
   await assert.rejects(asUser(id(13),'select coach_usage()'),{code:'42501'});
+  await assert.rejects(asUser(id(13),'select coach_transcript($1)',[id(801)]),{code:'42501'});
   await db.query("update accounts set status='ACTIVE' where id=$1",[id(13)]);
   await db.query('delete from training_sessions where id=$1',[id(801)]);
   assert.equal((await db.query('select session_id from coach_requests limit 1')).rows[0].session_id,null);

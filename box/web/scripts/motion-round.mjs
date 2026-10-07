@@ -57,7 +57,7 @@ export class MotionRound {
     if (timestamp<this.lastFrameAt) return;
     this.trackUntil(timestamp);
     this.lastFrameAt = timestamp;
-    this.lastFrameValid = Boolean(frame.valid);
+    this.lastFrameValid = Boolean(frame.valid) && frame.complete !== false;
     this.observed ||= Boolean(frame.valid);
     this.collect(this.recognizer.update({...frame,timestamp}),timestamp);
   }

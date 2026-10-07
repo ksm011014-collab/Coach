@@ -86,6 +86,12 @@ select {
   border-radius: 6px;
 }
 
+.signup-compound { min-width: 0; margin: 0; padding: 8px; border: 1px solid var(--border, #64748b); border-radius: 8px; }
+.signup-compound legend { padding: 0 4px; font-size: 12px; }
+.signup-email { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; align-items: center; }
+.signup-birth { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 8px; }
+.signup-birth label { min-width: 0; font-size: 12px; }
+.signup-compound input, .signup-compound select { min-width: 0; width: 100%; }
 .username-row {
   display: grid;
   grid-template-columns: 1fr 108px;
@@ -95,7 +101,9 @@ select {
 #checkUsernameButton {
   min-height: 48px;
   padding: 0px 10px;
-  white-space: nowrap;
+  white-space: normal;
+  font-size: 12px;
+  line-height: 1.3;
   box-shadow: none;
 }
 
@@ -847,6 +855,10 @@ input:focus {
   overflow: auto;
   padding: 24px;
 }
+
+.workspace-content { min-width: 0; }
+.workspace-heading { margin: 0 0 24px; padding: 4px 0; }
+.workspace-heading h2 { font-size: clamp(24px, 2.5vw, 32px); letter-spacing: -.035em; }
 
 .panel {
   min-height: 0;
@@ -1698,3 +1710,13 @@ h2 {
     max-width: none;
   }
 }
+.recording-viewer { width: min(900px, 94vw); max-height: 92vh; background: var(--panel, #17212b); color: var(--text, #fff); border-radius: 12px; }
+.recording-viewer video { display: block; width: 100%; max-height: 65vh; background: #000; }
+.login-panel { position: relative; isolation: isolate; overflow: hidden; }
+.login-warp { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: -1; border-radius: inherit; opacity: 1; transform-origin: 48% 50%; }
+.login-panel > .intro, .login-panel > .auth-card { transition: opacity .45s ease, transform .45s ease; }
+.login-entering > .intro, .login-entering > .auth-card { opacity: 0; transform: translateY(-12px); pointer-events: none; }
+.login-entering::before { opacity: 0; transition: opacity .45s ease; }
+.login-entering .login-warp { animation: login-warp-enter 3s cubic-bezier(.3,0,.85,1) both; }
+@keyframes login-warp-enter { 0%, 15% { transform: scale(1); } 100% { transform: scale(4); } }
+@media (prefers-reduced-motion: reduce) { .login-panel > .intro, .login-panel > .auth-card { transition: none; } .login-entering .login-warp { animation: none; } }

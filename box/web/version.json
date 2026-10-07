@@ -1,6 +1,6 @@
 {
-  "web_version": "0.8.0-dev.1",
+  "web_version": "0.9.0-jdc.1",
   "bridge_protocol": 1,
-  "minimum_engine_version": "0.3.0",
-  "release_channel": "development"
+  "minimum_engine_version": "0.4.0",
+  "release_channel": "stable"
 }

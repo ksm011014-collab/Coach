@@ -31,7 +31,7 @@ const { browserFixture } = require("./browser_fixture");
     assert.equal(await page.locator('.op-calendar > span[data-weekday="0"]').textContent(), "Sun");
     await page.locator('[data-view="workouts"]').click();
     await page.getByText("No workouts saved. Visit attendance is shown separately.").waitFor();
-    await page.locator('[data-view="center"]').click();
+    await page.locator('[data-view="dashboard"]').click();
     await page.getByRole("button", { name: "Save center details", exact: true }).waitFor();
     await page.locator('#centerShared [name="address"]').fill("센터 정보");
     await page.getByRole("button", { name: "Save center details", exact: true }).click();

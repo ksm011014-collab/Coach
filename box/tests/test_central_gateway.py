@@ -25,6 +25,25 @@ class FakeGateway(SupabaseGateway):
 
 
 class CentralGatewayTests(unittest.TestCase):
+    def test_staff_notes_are_loaded_by_account_and_saved_atomically(self):
+        account = {"id": "coach", "username": "coach", "role": "COACH", "center_id": "center"}
+        gateway = FakeGateway([[account], [{"account_id": "coach", "note": "수업 담당"}]])
+        self.assertEqual(gateway.accounts("caller")[0]["staff_note"], "수업 담당")
+        self.assertTrue(all(call[2]["token"] == "caller" for call in gateway.calls))
+        gateway = FakeGateway([[account]])
+        gateway.update_account("caller", "coach", {"role": "COACH", "status": "ACTIVE", "staff_note": "수업 담당"})
+        self.assertEqual(gateway.calls[0][1], "/rest/v1/rpc/admin_update_staff")
+        self.assertEqual(gateway.calls[0][2]["body"]["p_note"], "수업 담당")
+
+    def test_expired_auth_403_refreshes_but_real_denials_stay_forbidden(self):
+        gateway = SupabaseGateway(CentralGatewayConfig("https://project.supabase.co", "publishable"))
+        for message, expected in [('invalid JWT: token is expired', 401), ('account is suspended', 403)]:
+            error = HTTPError('https://project.supabase.co/auth/v1/user', 403, 'Forbidden', {}, io.BytesIO(json.dumps({'message': message}).encode()))
+            with patch('backend.central_gateway.urlopen', side_effect=error):
+                with self.assertRaises(CentralGatewayError) as caught:
+                    gateway._auth_user_id('access')
+            self.assertEqual(caught.exception.status, expected)
+
     def test_coach_routes_keep_caller_authorization_and_server_action(self):
         for method, path, target, expected in [
             ("GET", "/api/coach/models", "/functions/v1/coach-chat", {"action": "config"}),
@@ -146,7 +165,7 @@ class CentralGatewayTests(unittest.TestCase):
             self.assertEqual(context.exception.status, 404)
         self.assertEqual(gateway.calls, [])
 
-    def test_public_center_owner_signup_is_rejected_in_central_mode(self):
+    def test_public_center_owner_signup_requires_center_name(self):
         gateway = FakeGateway([])
 
         with self.assertRaises(CentralGatewayError) as context:
@@ -159,8 +178,23 @@ class CentralGatewayTests(unittest.TestCase):
                 }
             )
 
-        self.assertEqual(context.exception.status, 403)
+        self.assertEqual(context.exception.status, 400)
         self.assertEqual(gateway.calls, [])
+
+    def test_public_signup_allows_new_center_but_rejects_privileged_roles(self):
+        for role in ("OWNER", "CENTER_OWNER"):
+            gateway = FakeGateway([{"access_token": "access"}])
+            with patch.object(gateway, "_session_payload", return_value={"ok": True}):
+                result = gateway.signup({"username": "owner2", "password": "Owner!123",
+                    "password_confirm": "Owner!123", "role": role, "center_name": "New Center"})
+            self.assertTrue(result["ok"])
+            self.assertEqual(gateway.calls[0][2]["body"]["data"]["role"], "CENTER_OWNER")
+        for role in ("PLATFORM_ADMIN", "COACH"):
+            gateway = FakeGateway([])
+            with self.assertRaises(CentralGatewayError):
+                gateway.signup({"username": "owner2", "password": "Owner!123",
+                    "password_confirm": "Owner!123", "role": role, "center_name": "New Center"})
+            self.assertEqual(gateway.calls, [])
 
     def test_login_uses_synthetic_email_and_returns_central_role(self):
         gateway = FakeGateway(

@@ -8,6 +8,9 @@ namespace BoxingCoach.Desktop.Services;
 internal sealed class LocalBackendProcess : IDisposable
 {
     private const string ReadyPrefix = "BOXING_COACH_READY ";
+    private static readonly string OriginPortPath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "BoxingCoach", "local-origin-port.txt");
     private readonly Process _process;
     private readonly WindowsJobObject _jobObject;
     private bool _disposed;
@@ -72,6 +75,13 @@ internal sealed class LocalBackendProcess : IDisposable
                     throw new InvalidOperationException("로컬 AI 엔진이 잘못된 준비 정보를 반환했습니다.");
                 }
 
+                if (!File.Exists(OriginPortPath))
+                {
+                    Directory.CreateDirectory(Path.GetDirectoryName(OriginPortPath)!);
+                    using var originFile = new FileStream(OriginPortPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
+                    using var writer = new StreamWriter(originFile);
+                    writer.Write(appUri.Port.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                }
                 return new LocalBackendProcess(process, jobObject, appUri);
             }
         }
@@ -111,7 +121,16 @@ internal sealed class LocalBackendProcess : IDisposable
         startInfo.StandardOutputEncoding = Encoding.UTF8;
         startInfo.StandardErrorEncoding = Encoding.UTF8;
         startInfo.Environment["BOXING_COACH_HOST"] = "127.0.0.1";
-        startInfo.Environment["BOXING_COACH_PORT"] = "0";
+        var port = "0";
+        if (File.Exists(OriginPortPath))
+        {
+            port = File.ReadAllText(OriginPortPath).Trim();
+            if (!int.TryParse(port, out var savedPort) || savedPort < 1024 || savedPort > 65535)
+            {
+                throw new InvalidOperationException("저장된 로컬 주소 설정을 읽지 못했습니다. 기존 녹화 보존을 위해 주소를 자동 변경하지 않습니다.");
+            }
+        }
+        startInfo.Environment["BOXING_COACH_PORT"] = port;
         startInfo.Environment["BOXING_COACH_OPEN_BROWSER"] = "0";
         startInfo.Environment["PYTHONUNBUFFERED"] = "1";
         if (workerEnvironment is not null)

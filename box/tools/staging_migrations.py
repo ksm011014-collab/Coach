@@ -39,9 +39,12 @@ def main():
     state = query("select (select count(*) from auth.users) as auth_users, (select count(*) from pg_tables where schemaname='public') as public_tables, to_regclass('supabase_migrations.schema_migrations')::text as history", True)[0]
     migrations = sorted((Path(__file__).resolve().parents[1] / 'supabase/migrations').glob('*.sql'))
     print(json.dumps({'project': project['name'], **state, 'local_migrations': len(migrations)}), flush=True)
-    if not args.apply:
-        return
+    protected_sql = 'select (select count(*) from public.accounts) as accounts, (select count(*) from public.centers) as centers, (select count(*) from public.training_sessions) as training_sessions'
+    protected_before = query(protected_sql, True)[0] if state['history'] else None
     if not state['history']:
+        if not args.apply:
+            print(json.dumps({'pending': [path.name for path in migrations], 'history_verified': False}), flush=True)
+            return
         if state['auth_users'] or state['public_tables']:
             raise ValueError('Untracked existing data requires review before initial deployment')
         query("create schema if not exists supabase_migrations; create table supabase_migrations.schema_migrations(version text primary key, statements text[], name text, source_hash text); revoke all on schema supabase_migrations from public,anon,authenticated; revoke all on all tables in schema supabase_migrations from public,anon,authenticated;")
@@ -63,11 +66,19 @@ def main():
             continue
         if not sql.startswith('begin;') or not sql.endswith('commit;'):
             raise ValueError('Migration must have an explicit transaction: ' + path.name)
+        if not args.apply:
+            print('Pending: ' + path.name, flush=True)
+            continue
         statement = 'insert into supabase_migrations.schema_migrations(version,name,source_hash,statements) values(' + ','.join((quote(version), quote(name), quote(digest), 'array[' + quote(sql) + ']')) + ');'
         query(sql[:-len('commit;')] + '\n' + statement + '\ncommit;')
         print('Applied: ' + path.name, flush=True)
     result = query('select count(*) as migrations from supabase_migrations.schema_migrations', True)
     print(json.dumps(result), flush=True)
+    if protected_before is not None:
+        protected_after = query(protected_sql, True)[0]
+        print(json.dumps({'protected_before': protected_before, 'protected_after': protected_after}), flush=True)
+        if protected_before != protected_after:
+            raise ValueError('Existing record counts changed; inspect concurrent writes or migration effects')
 
 
 if __name__ == '__main__':

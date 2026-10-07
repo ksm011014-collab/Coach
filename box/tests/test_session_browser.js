@@ -43,7 +43,7 @@ const { stopTestServer } = require("./browser_fixture");
     const page = await context.newPage();
     if (process.env.BOXING_COACH_TEST_DISABLE_MOTION==='1') await page.route('**/vendor/motion/manifest.json',route=>route.fulfill({status:404,body:''}));
     const performanceSeconds = Number(process.env.BOXING_COACH_PERFORMANCE_SECONDS || 0);
-    if (performanceSeconds) await require('../tools/session_performance.cjs').installProbe(page);
+    if (performanceSeconds || process.env.BOXING_COACH_TEST_CAMERA_SOURCE==='canvas') await require('../tools/session_performance.cjs').installProbe(page);
     if (process.env.BOXING_COACH_TEST_POSE_DELEGATE) {
       await page.route('**/vendor/motion/manifest.json', async route => {
         const response = await route.fetch();

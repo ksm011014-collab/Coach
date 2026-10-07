@@ -99,36 +99,25 @@ function Escape-Xml {
 function New-PackageAsset {
     param([int]$Width, [int]$Height, [string]$Path)
     Add-Type -AssemblyName System.Drawing
+    $source = [Drawing.Image]::FromFile((Join-Path $windowsRoot 'BoxingCoach.Desktop/Assets/JDC.png'))
     $bitmap = New-Object Drawing.Bitmap($Width, $Height)
     $graphics = [Drawing.Graphics]::FromImage($bitmap)
     try {
-        $graphics.SmoothingMode = [Drawing.Drawing2D.SmoothingMode]::AntiAlias
-        $graphics.Clear([Drawing.Color]::FromArgb(5, 10, 16))
-        $penWidth = [Math]::Max(3, [Math]::Floor([Math]::Min($Width, $Height) / 28))
-        $pen = New-Object Drawing.Pen([Drawing.Color]::FromArgb(46, 232, 255), $penWidth)
-        $margin = [Math]::Max(6, [Math]::Floor([Math]::Min($Width, $Height) * 0.16))
-        $diameter = [Math]::Min($Width, $Height) - ($margin * 2)
-        $x = [Math]::Floor(($Width - $diameter) / 2)
-        $y = [Math]::Floor(($Height - $diameter) / 2)
-        $graphics.DrawEllipse($pen, $x, $y, $diameter, $diameter)
-        $fontSize = [Math]::Max(12, [Math]::Floor($diameter * 0.48))
-        $font = New-Object Drawing.Font("Segoe UI", $fontSize, [Drawing.FontStyle]::Bold, [Drawing.GraphicsUnit]::Pixel)
-        $brush = New-Object Drawing.SolidBrush([Drawing.Color]::White)
-        $format = New-Object Drawing.StringFormat
-        $format.Alignment = [Drawing.StringAlignment]::Center
-        $format.LineAlignment = [Drawing.StringAlignment]::Center
-        $graphics.DrawString("A", $font, $brush, (New-Object Drawing.RectangleF(0, 0, $Width, $Height)), $format)
+        $graphics.Clear([Drawing.Color]::FromArgb(3, 11, 20))
+        $graphics.InterpolationMode = [Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+        $size = [Math]::Min($Width, $Height)
+        $graphics.DrawImage($source, [int](($Width - $size) / 2), [int](($Height - $size) / 2), [int]$size, [int]$size)
         $bitmap.Save($Path, [Drawing.Imaging.ImageFormat]::Png)
-        $format.Dispose(); $brush.Dispose(); $font.Dispose(); $pen.Dispose()
     } finally {
         $graphics.Dispose()
         $bitmap.Dispose()
+        $source.Dispose()
     }
 }
 
 $packageVersion = Resolve-PackageVersion $Version
 $packageId = if ($Channel -eq "beta") { "BoxingCoach.Apex.Beta" } else { "BoxingCoach.Apex" }
-$displayName = if ($Channel -eq "beta") { "APEX Boxing AI Coach Beta" } else { "APEX Boxing AI Coach" }
+$displayName = if ($Channel -eq "beta") { "JDC Beta" } else { "JDC" }
 if ($UiMode -eq "hosted" -and $HostedAppUrl -notmatch '^https://') {
     throw "HostedAppUrl must be an HTTPS URL for hosted UI packages."
 }
@@ -177,6 +166,9 @@ Copy-Item (Join-Path $desktopPublish "*") $layout -Recurse -Force
 $workerLayout = Join-Path $layout "worker"
 New-Item -ItemType Directory -Force $workerLayout | Out-Null
 Copy-Item (Join-Path $workerDist "BoxingCoach.Worker.exe") $workerLayout -Force
+$speechAssets = Join-Path $projectRoot 'vendor\speech'
+if (!(Test-Path (Join-Path $speechAssets 'ggml-base.bin'))) { throw 'Run tools/prepare_speech_assets.py before packaging voice support.' }
+Copy-Item $speechAssets (Join-Path $workerLayout 'speech') -Recurse
 
 $settings = [ordered]@{
     DataMode = if ($SupabaseUrl -and $SupabasePublishableKey) { "supabase" } else { "local" }

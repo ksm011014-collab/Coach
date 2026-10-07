@@ -96,7 +96,7 @@ class CloudApiHandler(SimpleHTTPRequestHandler):
                     "status": "ok",
                     "service": "boxing-coach-cloud",
                     "data_mode": "supabase",
-                    "public_center_signup": False,
+                    "public_center_signup": True,
                     "capabilities": capabilities("supabase", local=False),
                 },
                 HTTPStatus.OK,

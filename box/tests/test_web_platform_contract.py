@@ -43,11 +43,15 @@ class WebPlatformContractTests(unittest.TestCase):
         self.assertIn("platformValueLabel(center.status)", source)
         self.assertIn("platformValueLabel(log.action)", source)
 
-    def test_central_capability_hides_public_owner_signup(self):
+    def test_signup_respects_server_capability_without_public_platform_role(self):
         app = (WEB / "app.js").read_text(encoding="utf-8")
         auth = (WEB / "scripts" / "auth-shell.js").read_text(encoding="utf-8")
         self.assertIn('platformApiFetch("/system/health")', app)
         self.assertIn('value !== "OWNER"', auth)
+        config = (WEB / "scripts" / "config.js").read_text(encoding="utf-8")
+        signup = config[config.index("const authDefaults ="):]
+        self.assertIn('["OWNER", "센터장: 새 센터 개설"]', signup)
+        self.assertNotIn('["PLATFORM_ADMIN",', signup)
 
     def test_index_links_manifest_platform_console_and_update_controller(self):
         source = (WEB / "index.html").read_text(encoding="utf-8")

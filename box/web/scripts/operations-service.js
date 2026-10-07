@@ -49,7 +49,7 @@
         { id: "preview-payment-1", member_id: "preview-member-1", product_id: "preview-product-1", amount: 150000, method: "CARD", paid_on: "2026-09-01", status: "PAID", adjustments: [] },
         { id: "preview-payment-2", member_id: "preview-member-2", product_id: "preview-product-2", amount: 200000, method: "TRANSFER", paid_on: null, status: "UNPAID", adjustments: [] },
       ].map(row => ({ ...row, center_id: CENTER })),
-      center: { id: CENTER, name: "합성 APEX 센터", phone: "010-0000-0000", address: "개발용 가상 주소", hours: "평일 09:00–22:00" },
+      center: { id: CENTER, name: "합성 JDC 센터", phone: "010-0000-0000", address: "개발용 가상 주소", hours: "평일 09:00–22:00" },
       profiles: [
         { id: "preview-owner", center_id: CENTER, name: "샘플 관리자", phone: "010-0000-0020" },
         { id: "preview-coach", center_id: CENTER, name: "샘플 코치", phone: "010-0000-0010" },

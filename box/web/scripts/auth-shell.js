@@ -65,6 +65,7 @@ async function applyAuthSession(payload) {
 }
 
 async function clearAuthSession() {
+  window.LoginIntro?.stop();
   window.RoundCoach?.clear();
   window.MotionSession?.clear();
   state.pendingSessionEnd = null;
@@ -102,11 +103,25 @@ async function login(username, password) {
     body: JSON.stringify({ username, password }),
   });
   await applyAuthSession(payload);
-  await hydrate();
+  await hydrate({ transition: true });
 }
 
 async function signup(form) {
   const body = Object.fromEntries(form.entries());
+  if (body.email_local !== undefined) {
+    const domain = body.email_domain === "custom" ? body.email_custom : body.email_domain;
+    body.email = `${String(body.email_local || "").trim()}@${String(domain || "").trim()}`;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email)) throw new Error(t("올바른 이메일 주소를 입력하세요."));
+    delete body.email_local;
+    delete body.email_domain;
+    delete body.email_custom;
+  }
+  if (body.birth_year !== undefined) {
+    body.birthdate = signupBirthdate(body.birth_year, body.birth_month, body.birth_day);
+    delete body.birth_year;
+    delete body.birth_month;
+    delete body.birth_day;
+  }
   body.role = body.signup_role || "MEMBER";
   delete body.signup_role;
   body.username = normalizeUsername(body.username);
@@ -134,7 +149,7 @@ async function signup(form) {
   await hydrate();
 }
 
-async function hydrate() {
+async function hydrate({ transition = false } = {}) {
   if (!state.token) return renderLoggedOut();
   try {
     const me = await api("/me");
@@ -166,15 +181,33 @@ async function hydrate() {
       }
     }
     state.localRecordings = await loadLocalRecordings();
+    if (transition && window.LoginIntro) {
+      const generation = authSessionGeneration;
+      const entered = await window.LoginIntro.enter();
+      if (!entered || !state.token || generation !== authSessionGeneration) return;
+    }
     renderApp();
   } catch (error) {
     console.warn(error);
-    await clearAuthSession();
+    if (error.status === 401) await clearAuthSession();
     renderLoggedOut();
+    const message = $("#authMessage");
+    message.textContent = error.message;
+    if (state.token) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.textContent = t("저장된 로그인으로 다시 연결");
+      retry.addEventListener("click", async () => {
+        retry.disabled = true;
+        await hydrate();
+      });
+      message.appendChild(retry);
+    }
   }
 }
 
 function renderLoggedOut() {
+  window.LoginIntro?.stop();
   $("#app").className = "shell auth-shell";
   $("#sidebar").classList.add("hidden");
   $("#loginPanel").classList.remove("hidden");
@@ -182,9 +215,11 @@ function renderLoggedOut() {
   $("#workspace").classList.add("hidden");
   $("#nav").innerHTML = "";
   renderAuthForm();
+  window.LoginIntro?.show();
 }
 
 function renderApp() {
+  window.LoginIntro?.stop();
   normalizeActiveView();
   $("#app").className = `shell ${state.sidebarCollapsed ? "sidebar-collapsed" : ""}`;
   $("#sidebar").classList.remove("hidden");
@@ -232,9 +267,16 @@ function renderAuthForm() {
     checkButton.addEventListener("click", checkUsername);
   }
   setupSignupRoleFields();
+  setupSignupInputs();
 }
 
 function renderField(field) {
+  if (state.authMode === "signup" && field.name === "email") {
+    return `<fieldset class="signup-compound"><legend>${t("이메일")}</legend><div class="signup-email"><input name="email_local" aria-label="${t("이메일 아이디")}" autocomplete="username" autocapitalize="none" required /><span>@</span><select name="email_domain" aria-label="${t("이메일 도메인")}">${["naver.com", "gmail.com", "daum.net", "hanmail.net", "outlook.com"].map(domain => `<option>${domain}</option>`).join("")}<option value="custom">${t("직접 입력")}</option></select></div><input name="email_custom" class="hidden" aria-label="${t("직접 입력 도메인")}" placeholder="example.com" autocapitalize="none" disabled /></fieldset>`;
+  }
+  if (state.authMode === "signup" && field.name === "birthdate") {
+    return `<fieldset class="signup-compound"><legend>${t("생년월일")}</legend><div class="signup-birth">${[["year", "년", 4, "bday-year"], ["month", "월", 2, "bday-month"], ["day", "일", 2, "bday-day"]].map(([name, label, length, autocomplete]) => `<label>${t(label)}<input name="birth_${name}" aria-label="${t(label)}" inputmode="numeric" pattern="[0-9]{${name === "year" ? "4" : "1,2"}}" maxlength="${length}" autocomplete="${autocomplete}" placeholder="${name === "year" ? "YYYY" : name === "month" ? "MM" : "DD"}" required /></label>`).join("")}</div></fieldset>`;
+  }
   const roleAttrs = field.signupRole ? ` data-signup-role="${field.signupRole}"` : "";
   if (field.type === "select") {
     const options = field.name === "signup_role" && !state.publicCenterSignup
@@ -247,6 +289,54 @@ function renderField(field) {
   const input = `<input name="${field.name}" value="${field.value}" type="${field.type}" placeholder="${escapeHtml(t(field.placeholder))}" autocomplete="off"${roleAttrs} required />`;
   if (!field.withCheck) return input;
   return `<div class="username-row">${input}<button type="button" id="checkUsernameButton">${t("중복 확인")}</button></div>`;
+}
+
+function signupBirthdate(yearText, monthText, dayText) {
+  const year = Number(yearText), month = Number(monthText), day = Number(dayText);
+  const date = new Date(year, month - 1, day);
+  if (!/^\d{4}$/.test(yearText) || !/^\d{1,2}$/.test(monthText) || !/^\d{1,2}$/.test(dayText) || year < 1900 || date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day || date > new Date()) {
+    throw new Error(t("올바른 생년월일을 입력하세요."));
+  }
+  return `${yearText}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function formatSignupPhone(value) {
+  const digits = String(value).replace(/\D/g, "").slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 7) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  const split = digits.length === 10 ? 6 : 7;
+  return `${digits.slice(0, 3)}-${digits.slice(3, split)}-${digits.slice(split)}`;
+}
+
+function setupSignupInputs() {
+  if (state.authMode !== "signup") return;
+  const domain = document.querySelector('[name="email_domain"]');
+  const custom = document.querySelector('[name="email_custom"]');
+  domain.addEventListener("change", () => {
+    custom.disabled = domain.value !== "custom";
+    custom.required = !custom.disabled;
+    custom.classList.toggle("hidden", custom.disabled);
+    if (!custom.disabled) custom.focus();
+  });
+  const year = document.querySelector('[name="birth_year"]');
+  year.addEventListener("input", event => {
+    if (/^\d{4}$/.test(year.value) && event.inputType !== "deleteContentBackward") document.querySelector('[name="birth_month"]').focus();
+  });
+  const phone = document.querySelector('[name="phone"]');
+  phone.inputMode = "tel";
+  phone.addEventListener("input", event => {
+    const position = phone.selectionStart ?? phone.value.length;
+    const count = phone.value.slice(0, position).replace(/\D/g, "").length;
+    if (event.inputType?.startsWith("delete")) return;
+    phone.value = formatSignupPhone(phone.value);
+    let cursor = 0, digits = 0;
+    while (cursor < phone.value.length && digits < count) {
+      if (/\d/.test(phone.value[cursor])) digits++;
+      cursor++;
+    }
+    phone.setSelectionRange(cursor, cursor);
+  });
+  phone.addEventListener("blur", () => { phone.value = formatSignupPhone(phone.value); });
 }
 
 function roleLabel(role) {
@@ -311,6 +401,7 @@ function renderNav() {
     .join("");
   document.querySelectorAll(".nav-item").forEach((button) => {
     button.addEventListener("click", () => {
+      if (button.dataset.view !== state.activeView) window.RoundCoach?.clear();
       state.activeView = button.dataset.view;
       renderApp();
     });

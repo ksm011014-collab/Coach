@@ -134,8 +134,11 @@ public partial class MainWindow : Window
         {
             var allowedOrigin = _currentOrigin is not null
                 && LocalOriginPolicy.IsSameOrigin(_currentOrigin, eventArgs.Uri);
-            eventArgs.State = allowedOrigin && eventArgs.PermissionKind == CoreWebView2PermissionKind.Camera
-                ? CoreWebView2PermissionState.Allow
+            eventArgs.State = !allowedOrigin ? CoreWebView2PermissionState.Deny
+                : eventArgs.PermissionKind == CoreWebView2PermissionKind.Camera ? CoreWebView2PermissionState.Allow
+                : eventArgs.PermissionKind == CoreWebView2PermissionKind.Microphone
+                    ? (MessageBox.Show(this, "음성 입력을 위해 마이크를 허용하시겠습니까? 녹음은 이 PC에서 변환됩니다.\nAllow microphone input? Audio is transcribed on this PC.", "JDC · Microphone", MessageBoxButton.YesNo, MessageBoxImage.Question, MessageBoxResult.No) == MessageBoxResult.Yes
+                        ? CoreWebView2PermissionState.Allow : CoreWebView2PermissionState.Deny)
                 : CoreWebView2PermissionState.Deny;
         };
         core.ProcessFailed += (_, eventArgs) =>

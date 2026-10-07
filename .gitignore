@@ -6,6 +6,9 @@ video_review_frames/
 # Local build output
 box/build/
 box/dist/
+box/release/BoxingCoach-*/
+box/release/BoxingCoach.lnk
 box/coach.zip
 .tools/
 .pnpm-store/
+box/vendor/speech/

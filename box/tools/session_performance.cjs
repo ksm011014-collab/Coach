@@ -32,13 +32,16 @@ async function installProbe(page) {
       track.stop=()=>{clearInterval(timer);stop();};
       return stream;
     };
-    window.motionMeasurements = {results:[],errors:[]};
+    window.motionMeasurements = {results:[],errors:[],workers:[]};
     const OriginalWorker = window.Worker;
     window.Worker = class extends OriginalWorker {
       constructor(...args) {
         super(...args);
         if (!String(args[0]).includes('motion-worker')) return;
+        const workerMeasurement={createdAt:performance.now(),readyAfterMs:null,warmupMs:null};
+        window.motionMeasurements.workers.push(workerMeasurement);
         this.addEventListener('message', ({data}) => {
+          if (data.type==='ready') {workerMeasurement.readyAfterMs=performance.now()-workerMeasurement.createdAt;workerMeasurement.warmupMs=data.warmupMs;}
           if (data.type==='result') window.motionMeasurements.results.push({at:performance.now(),inferenceMs:data.inferenceMs,latencyMs:performance.now()-data.timestamp});
           if (data.type==='error') window.motionMeasurements.errors.push(data.message);
         });
@@ -72,11 +75,11 @@ async function measureSession(page, seconds, output) {
     }
     const data=await page.evaluate(()=>{
       document.querySelector('#cameraPreview').cancelVideoFrameCallback(window.motionMeasurements.callback);
-      return {results:window.motionMeasurements.results,errors:window.motionMeasurements.errors};
+      return {results:window.motionMeasurements.results,errors:window.motionMeasurements.errors,workers:window.motionMeasurements.workers};
     });
     const percentile=(values,ratio)=>values.length?values.sort((left,right)=>left-right)[Math.min(values.length-1,Math.floor(values.length*ratio))]:null;
     const analysisEnabled=process.env.BOXING_COACH_TEST_DISABLE_MOTION!=='1';
-    const result={workload:'Generated live canvas stream, real application recording; not physical camera or human accuracy measurement',analysisEnabled,seconds,samples,errors:data.errors,
+    const result={workload:'Generated live canvas stream, real application recording; not physical camera or human accuracy measurement',analysisEnabled,seconds,samples,errors:data.errors,workers:data.workers,requestedDelegate:process.env.BOXING_COACH_TEST_POSE_DELEGATE||'manifest default',
       inferenceMedianMs:percentile(data.results.map(row=>row.inferenceMs),0.5),inferenceP95Ms:percentile(data.results.map(row=>row.inferenceMs),0.95),
       resultLatencyP95Ms:percentile(data.results.map(row=>row.latencyMs),0.95),
       limitations:'CPU seconds and Windows memory include this browser process group, not the Python server. GPU counters are per-engine samples, not total device utilization; sums may exceed 100. Counter collection adds overhead. Camera callbacks do not prove recording playback.'};

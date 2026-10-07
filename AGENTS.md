@@ -121,6 +121,10 @@ dotnet build windows/BoxingCoach.Desktop/BoxingCoach.Desktop.csproj
 
 ## Delivery
 
+- Create or rebuild Windows executables, increment release versions, export packages, or update launch shortcuts only when the user explicitly asks to generate a release. Routine work is source editing and validation only.
+
+- September 25 user workflow: use the connected Windows release build and its existing Supabase/chat service for ongoing changes and acceptance. Do not create separate SQLite modes, preview apps, test executables, or new test files for this workflow. Preserve existing databases. Keep validation non-destructive and never expose credentials. Motion recognition and feedback improvements remain deferred.
+
 - Summarize the outcome, important files changed, and validation performed.
 - Call out security, migration, deployment, and backward-compatibility implications.
 - Clearly separate completed implementation from steps requiring user-owned credentials or production approval.

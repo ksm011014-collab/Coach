@@ -21,7 +21,7 @@
     };
     const rows = data.members.filter(row => !row.deleted_on && (!view().status || status(row) === view().status));
     const result = U.filterRows(rows, { search: view().search, page: view().page, text: row => `${row.name} ${row.phone}`, compare: (a, b) => view().sort === "joined" ? String(b.joined_on || "").localeCompare(String(a.joined_on || "")) : a.name.localeCompare(b.name, "ko") });
-    return `${OperationsCommerce.filters(view(), U.field("status", t("회원권 상태"), view().status, { required: false, options: [["", t("전체")], ["ACTIVE", t("유효")], ["EXPIRED", t("만료·종료")]] }) + U.field("sort", t("정렬"), view().sort, { options: [["name", t("이름순")], ["joined", t("최근 등록순")]] }), t("회원 이름·연락처 검색"), ["OWNER", "CENTER_OWNER"].includes(actor.role) ? U.button("member-new", t("회원 등록"), "", "op-primary") : "")}${U.table([t("회원"), t("연락처"), t("회원권"), t("로그인 계정"), t("등록일"), t("관리")], result.rows.map(row => [OperationsCommerce.memberCell(data, row.id), e(row.phone), ["NONE", "PAUSED", "UPCOMING"].includes(status(row)) ? "—" : U.badge(status(row)), U.badge(row.account_status), e(row.joined_on), `<span class="op-row-actions">${canEditMembers ? U.button("member-edit", t("수정"), row.id) : ""}${["OWNER", "CENTER_OWNER"].includes(actor.role) ? U.button("member-delete", t("삭제"), row.id, "op-danger") : ""}</span>`]), view().search ? t("검색 결과가 없습니다.") : t("등록된 회원이 없습니다."))}${U.pagination(result)}`;
+    return `${OperationsCommerce.filters(view(), U.field("status", t("회원권 상태"), view().status, { required: false, options: [["", t("전체")], ["ACTIVE", t("유효")], ["EXPIRED", t("만료·종료")]] }) + U.field("sort", t("정렬"), view().sort, { options: [["name", t("이름순")], ["joined", t("최근 등록순")]] }), t("회원 이름·연락처 검색"), ["OWNER", "CENTER_OWNER"].includes(actor.role) ? U.button("member-new", t("회원 등록"), "", "op-primary") : "")}${U.table([t("회원"), t("연락처"), t("회원권"), t("로그인 계정"), t("등록일"), t("세션 시작"), t("관리")], result.rows.map(row => [OperationsCommerce.memberCell(data, row.id), e(row.phone), ["NONE", "PAUSED", "UPCOMING"].includes(status(row)) ? "—" : U.badge(status(row)), U.badge(row.account_status), e(row.joined_on), !preview && canEditMembers ? U.button("member-start", t("세션 시작"), row.id, "op-primary") : "", `<span class="op-row-actions">${canEditMembers ? U.button("member-edit", t("수정"), row.id) : ""}${["OWNER", "CENTER_OWNER"].includes(actor.role) ? U.button("member-delete", t("삭제"), row.id, "op-danger") : ""}</span>`]), view().search ? t("검색 결과가 없습니다.") : t("등록된 회원이 없습니다."))}${U.pagination(result)}`;
   }
   function memberDetail(member) {
     const tab = view().tab || "basic";
@@ -40,11 +40,17 @@
     return `<div class="op-page-head">${U.button("member-back", t("회원 목록"))}<h2>${e(member.name)}</h2></div><div class="op-tabs" role="tablist" aria-label="${t("회원 상세")}">${tabs.map(([key, title]) => `<button role="tab" id="member-tab-${key}" aria-controls="member-panel" tabindex="${tab === key ? 0 : -1}" aria-selected="${tab === key}" data-action="member-tab" data-id="${key}">${title}</button>`).join("")}</div><section role="tabpanel" id="member-panel" tabindex="0" aria-labelledby="member-tab-${tab}">${content}</section>`;
   }
   function workoutTable(rows, empty = t("저장된 운동 기록이 없습니다. 방문 출석은 별도 화면에서 확인하세요.")) {
-    return U.table([t("회원"), t("시작"), t("종료"), t("상태"), t("상세")], rows.map(row => [e(data.members.find(member => member.id === row.member_id)?.name), e(row.started_at), e(row.ended_at || "—"), row.ended_at ? t("완료") : t("진행 중"), `${U.button("workout-detail", t("기록 상세"), row.id)} ${!preview && row.has_recording ? U.button("recording-play", t("녹화 보기"), row.id) + U.button("recording-download", t("녹화 다운로드"), row.id) : ""} ${actor.role !== "PLATFORM_ADMIN" ? U.button("workout-delete", t("삭제"), row.id, "op-danger") : ""}`]), empty);
+    return U.table([t("회원"), t("시작"), t("종료"), t("상태"), t("관리")], rows.map(row => {
+      const recordings = !preview && row.has_recording ? U.button("recording-play", t("녹화 보기"), row.id) + U.button("recording-download", t("녹화 다운로드"), row.id) : "";
+      const remove = actor.role !== "PLATFORM_ADMIN" ? U.button("workout-delete", t("삭제"), row.id, "op-danger") : "";
+      const exports = !preview ? `<span class="op-workout-actions">${U.button("workout-report", t("결과·대화 보고서"), row.id)}${U.button("workout-text", t("텍스트 다운로드"), row.id)}</span>` : "";
+      const retry = !preview && row.recording_pending ? U.button("recording-retry", t("녹화 저장 재시도"), row.id) : "";
+      return [e(data.members.find(member => member.id === row.member_id)?.name), e(workoutDateTime(row.started_at)), e(workoutDateTime(row.ended_at)), row.ended_at ? t("완료") : t("진행 중"), `<span class="op-workout-actions">${recordings}${remove}</span>${exports}${retry}`];
+    }), empty);
   }
   function workouts() {
-    const rows = own(data.workouts).filter(row => (!view().status || (row.ended_at ? "COMPLETE" : "OPEN") === view().status) && (!view().from || row.started_at.slice(0, 10) >= view().from) && (!view().to || row.started_at.slice(0, 10) <= view().to));
-    const result = U.filterRows(rows, { search: view().search, page: view().page, text: row => { const member = data.members.find(item => item.id === row.member_id); return `${member?.name || ""} ${member?.phone || ""}`; }, compare: (a, b) => view().sort === "oldest" ? a.started_at.localeCompare(b.started_at) : b.started_at.localeCompare(a.started_at) });
+    const rows = own(data.workouts).filter(row => (!view().status || (row.ended_at ? "COMPLETE" : "OPEN") === view().status) && (!view().from || workoutLocalDate(row.started_at) >= view().from) && (!view().to || Boolean(workoutLocalDate(row.started_at)) && workoutLocalDate(row.started_at) <= view().to));
+    const result = U.filterRows(rows, { search: view().search, page: view().page, text: row => { const member = data.members.find(item => item.id === row.member_id); return `${member?.name || ""} ${member?.phone || ""}`; }, compare: (left, right) => view().sort === "oldest" ? String(left.started_at || "").localeCompare(String(right.started_at || "")) : String(right.started_at || "").localeCompare(String(left.started_at || "")) });
     return `${OperationsCommerce.filters(view(), U.field("from", t("시작일"), view().from, { type: "date", required: false }) + U.field("to", t("종료일"), view().to, { type: "date", required: false }) + U.field("status", t("완료 상태"), view().status, { required: false, options: [["", t("전체")], ["COMPLETE", t("완료")], ["OPEN", t("진행 중")]] }) + U.field("sort", t("정렬"), view().sort, { options: [["newest", t("최신순")], ["oldest", t("오래된순")]] }))}${workoutTable(result.rows, view().search ? t("검색 결과가 없습니다.") : undefined)}${U.pagination(result)}`;
   }
   function home() {
@@ -68,5 +74,17 @@
 
     return { dashboard, members, workouts, home, memberForm };
   }
-  root.OperationsViews = Object.freeze({ create });
+  function workoutLocalDate(value) {
+    if (value === null || value === undefined || value === "") return "";
+    const date = new Date(typeof value === "number" ? value * 1000 : value);
+    if (!Number.isFinite(date.getTime())) return "";
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+  function workoutDateTime(value) {
+    const local = workoutLocalDate(value);
+    if (!local) return "—";
+    const date = new Date(typeof value === "number" ? value * 1000 : value);
+    return `${local.slice(2).replaceAll("-", "/")} ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  }
+  root.OperationsViews = Object.freeze({ create, workoutDateTime, workoutLocalDate });
 })(window);

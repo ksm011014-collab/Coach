@@ -1,4 +1,4 @@
-const CACHE_NAME = "boxingcoach-shell-2026-09-23-2";
+const CACHE_NAME = "boxingcoach-shell-2026-09-25-jdc-ui-4";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -21,6 +21,7 @@ const APP_SHELL = [
   "/scripts/accounts.js",
   "/scripts/android-offline.js",
   "/scripts/auth-shell.js",
+  "/scripts/login-intro.js",
   "/scripts/business.js",
   "/scripts/config.js",
   "/scripts/desktop-bridge.js",
@@ -41,6 +42,9 @@ const APP_SHELL = [
   "/scripts/coach-summary.mjs",
   "/scripts/coach-api.js",
   "/scripts/coach-voice.mjs",
+  "/scripts/coach-native-voice.mjs",
+  "/scripts/coach-local-input.mjs",
+  "/scripts/workout-export.mjs",
   "/styles/round-coach.css",
   "/scripts/storage.js",
   "/scripts/utils.js"

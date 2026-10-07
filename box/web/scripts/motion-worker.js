@@ -55,15 +55,21 @@ async function processFrame(message) {
       canvas.height = bitmap.height;
     }
     canvas.getContext('2d').drawImage(bitmap, 0, 0);
+    const inferenceStarted = performance.now();
     let poses;
+    let inferenceFinished;
     if (model === 'movenet') {
       const result = await detector.estimatePoses(canvas, { flipHorizontal: false }, timestamp);
+      inferenceFinished = performance.now();
       poses = result.map(pose => ({ score: pose.score, landmarks: pose.keypoints.map(point => ({ name: point.name, x: point.x / canvas.width, y: point.y / canvas.height, visibility: point.score })) }));
     } else {
       const result = detector.detectForVideo(canvas, timestamp);
+      inferenceFinished = performance.now();
       poses = result.landmarks.map((landmarks, index) => ({ landmarks, worldLandmarks: result.worldLandmarks[index] }));
     }
-    self.postMessage({ type: 'result', id, timestamp, model, poses, inferenceMs: performance.now() - started, multiplePeopleCheck: model === 'mediapipe' });
+    self.postMessage({ type: 'result', id, timestamp, model, poses, width:canvas.width, height:canvas.height,
+      preprocessMs:inferenceStarted-started, inferenceMs:inferenceFinished-inferenceStarted,
+      resultPreparationMs:performance.now()-inferenceFinished, multiplePeopleCheck: model === 'mediapipe' });
   } finally {
     bitmap?.close();
     busy = false;

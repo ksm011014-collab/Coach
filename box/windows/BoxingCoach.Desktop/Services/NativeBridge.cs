@@ -16,6 +16,7 @@ internal sealed class NativeBridge : IDisposable
     private readonly IReadOnlyCollection<Uri> _allowedOrigins;
     private readonly WorkerStatus _workerStatus;
     private readonly bool _hostedUi;
+    private readonly NativeSpeech _speech = new();
 
     public NativeBridge(
         CoreWebView2 webView,
@@ -32,7 +33,7 @@ internal sealed class NativeBridge : IDisposable
         _webView.WebMessageReceived += OnWebMessageReceived;
     }
 
-    private void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
+    private async void OnWebMessageReceived(object? sender, CoreWebView2WebMessageReceivedEventArgs eventArgs)
     {
         string requestId = string.Empty;
         try
@@ -64,6 +65,9 @@ internal sealed class NativeBridge : IDisposable
                 "auth.get" => _sessionStore.Load(),
                 "auth.set" => SaveSession(root.GetProperty("payload")),
                 "auth.clear" => ClearSession(),
+                "speech.voices" => _speech.Voices(),
+                "speech.synthesize" => await _speech.SynthesizeAsync(root.GetProperty("payload")),
+                "speech.stop" => _speech.Stop(),
                 "platform.get" => new
                 {
                     platform = "windows",
@@ -111,6 +115,7 @@ internal sealed class NativeBridge : IDisposable
 
     public void Dispose()
     {
+        _speech.Dispose();
         _webView.WebMessageReceived -= OnWebMessageReceived;
     }
 }

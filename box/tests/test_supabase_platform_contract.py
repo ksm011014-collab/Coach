@@ -70,10 +70,15 @@ class SupabasePlatformContractTests(unittest.TestCase):
         source = EDGE_FUNCTION.read_text(encoding="utf-8")
         self.assertIn('callerClient.rpc("account_is_active")', source)
 
-    def test_public_center_owner_signup_requires_platform_provisioning(self):
-        self.assertIn("create trigger before_auth_user_reject_unmanaged_owner", self.sql)
-        self.assertIn("center owner accounts require platform provisioning", self.sql)
-        self.assertIn("provisioning_nonce is null", self.sql)
+    def test_public_center_signup_has_role_and_center_boundaries(self):
+        signup = (MIGRATION.parent / "202609250001_center_self_signup.sql").read_text(encoding="utf-8")
+        retirement = (MIGRATION.parent / "202609250002_retire_owner_signup_block.sql").read_text(encoding="utf-8")
+        self.assertIn("requested_role in ('OWNER','CENTER_OWNER')", signup)
+        self.assertIn("self signup must create a new center", signup)
+        self.assertIn("public signup role is not allowed", signup)
+        self.assertIn("public.check_provisioning_actor", signup)
+        self.assertIn("'CENTER_CREATED'", signup)
+        self.assertIn("drop trigger if exists before_auth_user_reject_unmanaged_owner", retirement)
 
 
 if __name__ == "__main__":

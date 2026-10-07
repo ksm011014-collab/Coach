@@ -40,6 +40,21 @@ def evaluate(truth, predictions, tolerance_ms=350):
         raise ValueError('Invalid tolerance')
     expected = validate_events(truth['events'], duration)
     actual = validate_events(predictions['events'], duration)
+    all_identifiers = {event['id'] for event in actual}
+    windows = truth.get('evaluated_intervals', [{'start_ms': 0, 'end_ms': duration}])
+    previous_end = -1
+    if not isinstance(windows, list) or not windows:
+        raise ValueError('Nonempty evaluated intervals required')
+    for window in windows:
+        start, end = window['start_ms'], window['end_ms']
+        if not all(isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value) for value in (start, end)) or not 0 <= start < end <= duration or start < previous_end:
+            raise ValueError('Invalid or overlapping evaluated intervals')
+        previous_end = end
+    if any(not any(window['start_ms'] <= event['start_ms'] <= event['end_ms'] <= window['end_ms'] for window in windows) for event in expected):
+        raise ValueError('Ground truth outside evaluated intervals')
+    scored = [event for event in actual if any(window['start_ms'] <= event['end_ms'] <= window['end_ms'] for window in windows)]
+    excluded_predictions = len(actual) - len(scored)
+    actual = scored
     if len(expected) > 1000 or len(actual) > 1000:
         raise ValueError('Split long recordings into clips of at most 1000 events')
     scores = [[(0, 0.0)] * (len(actual) + 1) for _ in range(len(expected) + 1)]
@@ -88,13 +103,15 @@ def evaluate(truth, predictions, tolerance_ms=350):
             raise ValueError('Invalid or overlapping negative intervals')
         if any(event['start_ms'] < end and event['end_ms'] > start for event in expected):
             raise ValueError('Negative interval overlaps a labeled motion')
+        if not any(window['start_ms'] <= start < end <= window['end_ms'] for window in windows):
+            raise ValueError('Negative interval outside evaluated intervals')
         previous_end = end
     negative_ms = sum(interval['end_ms'] - interval['start_ms'] for interval in intervals)
     negative_detections = sum(any(interval['start_ms'] <= event['end_ms'] < interval['end_ms'] for interval in intervals) for event in actual)
     hand_pairs = [(expected[first]['hand'], actual[second]['hand']) for first, second in pairs if 'hand' in expected[first] and 'hand' in actual[second] and expected[first]['label'] == actual[second]['label']]
     hand_errors = sum(first != second for first, second in hand_pairs)
     publications = {}
-    identifiers = {event['id'] for event in actual}
+    identifiers = all_identifiers
     for publication in predictions.get('score_publications', []):
         identifier, published = publication.get('id'), publication.get('published_ms')
         if identifier not in identifiers or identifier in publications or isinstance(published, bool) or not isinstance(published, (int, float)) or not math.isfinite(published) or published < 0:
@@ -102,7 +119,7 @@ def evaluate(truth, predictions, tolerance_ms=350):
         publications[identifier] = published
     latencies = sorted(publications[actual[second]['id']] - expected[first]['end_ms'] for first, second in pairs if actual[second]['id'] in publications and expected[first]['label'] == actual[second]['label'])
     percentile = lambda fraction: latencies[min(len(latencies) - 1, math.ceil(len(latencies) * fraction) - 1)] if latencies else None
-    return {'clip_id': truth['clip_id'], 'split': truth['split'], 'tolerance_ms': tolerance_ms, 'matching': 'chronological maximum one-to-one timing matches, then minimum time error; labels excluded from matching', 'per_class': per_class, 'confusion': confusion, 'unmatched_predictions': len(actual) - len(matched_predictions), 'negative_minutes': negative_ms / 60000, 'negative_false_positives_per_minute': negative_detections * 60000 / negative_ms if negative_ms else None,
+    return {'clip_id': truth['clip_id'], 'split': truth['split'], 'evaluated_ms': sum(window['end_ms'] - window['start_ms'] for window in windows), 'excluded_predictions': excluded_predictions, 'tolerance_ms': tolerance_ms, 'matching': 'chronological maximum one-to-one timing matches, then minimum time error; labels excluded from matching', 'per_class': per_class, 'confusion': confusion, 'unmatched_predictions': len(actual) - len(matched_predictions), 'negative_minutes': negative_ms / 60000, 'negative_false_positives_per_minute': negative_detections * 60000 / negative_ms if negative_ms else None,
             'hand_comparison': {'matched_labeled_events': len(hand_pairs), 'errors': hand_errors, 'error_rate': hand_errors / len(hand_pairs) if hand_pairs else None},
             'completion_to_score': {'matched_published_events': len(latencies), 'median_ms': percentile(0.5), 'p95_ms': percentile(0.95), 'early_publications': sum(value < 0 for value in latencies), 'meaning': 'score DOM update relative to annotated recovery; not screen paint or 5-second coaching feedback'}}
 

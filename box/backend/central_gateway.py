@@ -101,6 +101,9 @@ class SupabaseGateway:
                 return self._request("POST", "/functions/v1/coach-chat", token=token, body={"action": "config"}), HTTPStatus.OK
             if method == "GET" and path == "/api/coach/usage":
                 return self._request("POST", "/rest/v1/rpc/coach_usage", token=token, body={}), HTTPStatus.OK
+            if method == "GET" and path.startswith("/api/coach/transcript/"):
+                session_id = path.removeprefix("/api/coach/transcript/")
+                return self._request("POST", "/rest/v1/rpc/coach_transcript", token=token, body={"p_session_id": session_id}), HTTPStatus.OK
             if method == "POST" and path == "/api/coach/reply":
                 return self._request("POST", "/functions/v1/coach-chat", token=token, body={**body, "action": "reply"}), HTTPStatus.OK
             raise CentralGatewayError("요청한 중앙 API를 찾을 수 없습니다.", HTTPStatus.NOT_FOUND)
@@ -186,13 +189,11 @@ class SupabaseGateway:
         role = str(body.get("role") or "MEMBER").upper()
         if role == "OWNER":
             role = "CENTER_OWNER"
-        if role == "CENTER_OWNER":
-            raise CentralGatewayError(
-                "센터 관리자 계정은 플랫폼 관리자가 중앙 관제에서 생성해야 합니다.",
-                HTTPStatus.FORBIDDEN,
-            )
-        if role != "MEMBER":
+        if role not in {"CENTER_OWNER", "MEMBER"}:
             raise CentralGatewayError("가입할 수 없는 계정 역할입니다.", HTTPStatus.BAD_REQUEST)
+        center_name = str(body.get("center_name") or "").strip()
+        if role == "CENTER_OWNER" and not 2 <= len(center_name) <= 100:
+            raise CentralGatewayError("센터명은 2~100자로 입력해 주세요.", HTTPStatus.BAD_REQUEST)
         auth = self._request(
             "POST",
             "/auth/v1/signup",
@@ -205,7 +206,7 @@ class SupabaseGateway:
                     "name": str(body.get("name") or username).strip(),
                     "contact_email": str(body.get("email") or "").strip(),
                     "phone": str(body.get("phone") or "").strip(),
-                    "center_name": str(body.get("center_name") or "").strip(),
+                    "center_name": center_name,
                     "center_code": str(body.get("center_code") or "").strip().lower(),
                 },
             },
@@ -415,7 +416,10 @@ class SupabaseGateway:
             "GET", "/rest/v1/accounts", token=token,
             query={"select": "*,centers!accounts_center_id_fkey(name,code)", "order": "created_at.desc"},
         )
-        return [map_account(row) for row in rows]
+        notes = self._request("GET", "/rest/v1/staff_notes", token=token,
+                              query={"select": "account_id,note"})
+        by_account = {row["account_id"]: row["note"] for row in notes}
+        return [{**map_account(row), "staff_note": by_account.get(row["id"], "")} for row in rows]
 
     def create_account(self, token: str, body: dict[str, Any]) -> dict[str, Any]:
         return self._request("POST", "/functions/v1/admin-create-user", token=token, body=body)
@@ -423,12 +427,14 @@ class SupabaseGateway:
     def update_account(
         self, token: str, account_id: str, body: dict[str, Any]
     ) -> dict[str, Any]:
+        has_note = "staff_note" in body
         rows = self._request(
-            "POST", "/rest/v1/rpc/admin_update_account", token=token,
+            "POST", "/rest/v1/rpc/admin_update_staff" if has_note else "/rest/v1/rpc/admin_update_account", token=token,
             body={
                 "p_target_id": account_id,
                 "p_role": body.get("role"),
                 "p_status": body.get("status"),
+                **({"p_note": body["staff_note"]} if has_note else {}),
             },
         )
         if not rows:
@@ -682,6 +688,12 @@ class SupabaseGateway:
             except json.JSONDecodeError:
                 payload = {}
             status = error.code
+            auth_message = str(payload.get("msg") or payload.get("message") or "").lower()
+            if path == "/auth/v1/user" and status == 403 and (
+                "token is expired" in auth_message or "jwt expired" in auth_message
+                or payload.get("error_code") == "bad_jwt"
+            ):
+                status = HTTPStatus.UNAUTHORIZED
             if path.startswith("/rest/v1/rpc/") and status == 500 and payload.get("code") == "P0002":
                 status = HTTPStatus.NOT_FOUND
             message = payload.get("error") if path == "/functions/v1/coach-chat" and str(payload.get("error", "")).startswith("coach_") else translate_remote_error(status, payload)

@@ -9,6 +9,7 @@ from urllib.request import urlopen
 def main():
     parser = argparse.ArgumentParser(description='Prepare pinned local experimental pose assets without modifying application data.')
     parser.add_argument('--download', action='store_true', help='Download missing model and upstream license from their official sources')
+    parser.add_argument('--delegate', choices=['AUTO', 'CPU', 'GPU'], default='CPU', help='CPU is the camera-tested default; opt-in AUTO tries GPU and falls back once to CPU on failure')
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1]
     source = root / 'artifacts/pose-benchmark'
@@ -44,7 +45,7 @@ def main():
     shutil.copy2(model, destination / model.name)
     shutil.copy2(license_file, destination / license_file.name)
     shutil.copy2(package / 'README.md', destination / 'RUNTIME-README.md')
-    manifest = {'model': 'mediapipe', 'module': '/vendor/motion/vision_bundle.mjs', 'wasm': '/vendor/motion/wasm', 'modelPath': '/vendor/motion/pose_landmarker_lite.task', 'delegate': 'CPU', 'status': 'experimental', 'sha256': expected}
+    manifest = {'model': 'mediapipe', 'module': '/vendor/motion/vision_bundle.mjs', 'wasm': '/vendor/motion/wasm', 'modelPath': '/vendor/motion/pose_landmarker_lite.task', 'delegate': args.delegate, 'status': 'experimental', 'sha256': expected}
     installed = [destination / 'vision_bundle.mjs', destination / 'runtime-package.json', destination / model.name, destination / license_file.name, destination / 'RUNTIME-README.md', *sorted((destination / 'wasm').glob('*'))]
     manifest['runtime_version'] = package_data['version']
     manifest['sources'] = {target.name: url for target, url in sources.items()}

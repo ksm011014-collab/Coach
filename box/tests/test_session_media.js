@@ -39,6 +39,21 @@ class Recorder extends EventTarget {
   await assert.rejects(context.stopRecording("synthetic-empty"), /녹화 데이터가 없습니다/);
   assert.match(state.recordingError, /녹화 데이터가 없습니다/);
   assert.equal(saved.length, 2, "An empty capture must not be saved as a recording");
+  context.saveRecording = async () => { throw new Error('synthetic storage failure'); };
+  context.startRecording();
+  context.state.recorder.chunk('retryable');
+  const pending = await context.stopRecording('synthetic-retry');
+  assert.equal(pending.persisted, false);
+  state.localRecordings = { 'synthetic-retry': pending };
+  state.sessions = [{ id: 'synthetic-retry' }];
+  await assert.rejects(context.retryRecordingSave('synthetic-retry'), /storage failure/);
+  assert.equal(state.localRecordings['synthetic-retry'].persisted, false);
+  context.saveRecording = async recording => { saved.push(recording); };
+  await context.retryRecordingSave('synthetic-retry');
+  assert.equal(state.localRecordings['synthetic-retry'].persisted, true);
+  assert.equal(await saved.at(-1).blob.text(), 'retryablefinal');
+  state.sessions = [];
+  await assert.rejects(context.retryRecordingSave('synthetic-retry'), /접근 권한/);
   const elements = new Map();
   context.$ = selector => {
     if (!elements.has(selector)) elements.set(selector, { classList: { add() {}, remove() {} }, videoWidth: 640, readyState: 2, play: async () => {}, removeEventListener() {} });

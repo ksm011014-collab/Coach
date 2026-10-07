@@ -2,7 +2,7 @@ export function coachingSummary(session) {
   let report;
   try { report = typeof session.feedback_report==='string'?JSON.parse(session.feedback_report):session.feedback_report; } catch (_) {}
   const summary = {duration_seconds:Math.max(0,Math.round(session.ended_at-session.started_at)),analysis_status:'unavailable'};
-  if (report?.version===1 && Number.isFinite(report.duration_ms)) summary.duration_seconds=Math.max(0,Math.floor(report.duration_ms/1000));
+  if (report?.version===1 && Number.isFinite(report.duration_ms)) summary.duration_seconds=Math.max(0,report.duration_ms/1000);
   if (report?.version===1 && Number.isFinite(report.tracking?.total_ms)) summary.tracking_unavailable_seconds=report.tracking.total_ms/1000;
   if (report?.version!==1 || report.status!=='experimental') return summary;
   summary.analysis_status='experimental';

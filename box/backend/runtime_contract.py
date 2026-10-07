@@ -2,7 +2,7 @@
 import os
 from urllib.parse import urlsplit
 
-ENGINE_VERSION = "0.3.0"
+ENGINE_VERSION = "0.4.0"
 
 
 def capabilities(data_mode: str, *, local: bool) -> dict:
@@ -14,6 +14,7 @@ def capabilities(data_mode: str, *, local: bool) -> dict:
         "motion_reports": {"versions": [1], "source": "device_estimate"},
         "camera": {"owner": "device", "capture": "browser"},
         "recording_conversion": {"owner": "local_worker", "route_available": local},
+        "speech_transcription": {"owner": "local_worker", "route_available": local, "languages": ["ko", "en"], "paid_api": False},
     }
 
 

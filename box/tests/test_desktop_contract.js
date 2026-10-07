@@ -14,7 +14,7 @@ async function check(platform,allowed) {
   if(allowed) await result; else await assert.rejects(result);
 }
 (async()=>{
-  const valid={bridgeProtocol:1,engineVersion:'0.3.0',workerAvailable:true,capabilities:{contract_version:1}};
+  const valid={bridgeProtocol:1,engineVersion:'0.4.0',workerAvailable:true,capabilities:{contract_version:1}};
   await check(valid,true);
   for(const patch of [{workerAvailable:false},{engineVersion:'0.2.0'},{capabilities:null},{bridgeProtocol:2},{capabilities:{contract_version:2}}]) await check({...valid,...patch},false);
   console.log('Desktop worker compatibility allow/deny tests passed');

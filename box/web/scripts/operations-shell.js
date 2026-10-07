@@ -1,11 +1,11 @@
 (function () {
   "use strict";
-  window.mountOperations = function ({ host, adapter, user, initialView = "dashboard", onNavigate, onRecording, onDownload } = {}) {
+  window.mountOperations = function ({ host, adapter, user, initialView = "dashboard", onNavigate, onRecording, onDownload, onStartMember } = {}) {
   const preview = !adapter;
   const U = OperationsUI;
   const e = U.escape;
   if (preview && new URLSearchParams(location.search).get("enable") !== "1") {
-    host.innerHTML = `<main class="op-main"><h1>${t("APEX 개발용 미리보기")}</h1><p>${t("미리보기는 꺼져 있습니다. 합성 데이터만 사용하는 별도 화면입니다.")}</p><a href="/preview.html?enable=1">${t("개발용 샘플 데이터로 열기")}</a> · <a href="/">${t("실제 앱으로 돌아가기")}</a></main>`;
+    host.innerHTML = `<main class="op-main"><h1>${t("JDC 개발용 미리보기")}</h1><p>${t("미리보기는 꺼져 있습니다. 합성 데이터만 사용하는 별도 화면입니다.")}</p><a href="/preview.html?enable=1">${t("개발용 샘플 데이터로 열기")}</a> · <a href="/">${t("실제 앱으로 돌아가기")}</a></main>`;
     return;
   }
   let actor = user || { id: "preview-owner", name: "샘플 관리자", role: "CENTER_OWNER" };
@@ -20,7 +20,7 @@
   const view = () => views[current] ||= { page: 1, search: "", status: "" };
   const own = rows => actor.role === "MEMBER" ? rows.filter(row => row.member_id === actor.id) : rows;
   function toolbar() {
-    return `<header class="op-topbar"><strong class="op-brand">APEX</strong><span>${t("체육관 운영 · 프론트엔드 미리보기")}</span><div>${U.button("theme", t("테마 전환"))} <a href="/">${t("실제 앱으로 돌아가기")}</a></div></header><aside class="op-preview-banner" aria-label="${t("개발용 미리보기")}"><strong>${t("개발용 샘플 데이터")}</strong><label>${t("미리보기 역할")}<select id="previewRole"><option value="CENTER_OWNER" ${actor.role === "CENTER_OWNER" ? "selected" : ""}>${t("관리자")}</option><option value="COACH" ${actor.role === "COACH" ? "selected" : ""}>${t("코치")}</option><option value="MEMBER" ${actor.role === "MEMBER" ? "selected" : ""}>${t("회원")}</option></select></label><label>${t("기준일")}<input type="date" id="previewDate" value="${e(data?.referenceDate || "2026-09-18")}"></label>${U.button("reset", "샘플 초기화")}${U.button("fail-next", t("다음 요청 실패 재현"))}</aside>`;
+    return `<header class="op-topbar"><strong class="op-brand">JDC</strong><span>${t("체육관 운영 · 프론트엔드 미리보기")}</span><div>${U.button("theme", t("테마 전환"))} <a href="/">${t("실제 앱으로 돌아가기")}</a></div></header><aside class="op-preview-banner" aria-label="${t("개발용 미리보기")}"><strong>${t("개발용 샘플 데이터")}</strong><label>${t("미리보기 역할")}<select id="previewRole"><option value="CENTER_OWNER" ${actor.role === "CENTER_OWNER" ? "selected" : ""}>${t("관리자")}</option><option value="COACH" ${actor.role === "COACH" ? "selected" : ""}>${t("코치")}</option><option value="MEMBER" ${actor.role === "MEMBER" ? "selected" : ""}>${t("회원")}</option></select></label><label>${t("기준일")}<input type="date" id="previewDate" value="${e(data?.referenceDate || "2026-09-18")}"></label>${U.button("reset", "샘플 초기화")}${U.button("fail-next", t("다음 요청 실패 재현"))}</aside>`;
   }
   function frame(content) {
     if (!preview) {
@@ -72,6 +72,14 @@
     frame(renderers[current]());
   }
   const screens = () => OperationsViews.create({ data, view, actor, preview, openForm, own, service });
+  async function exportWorkout(id, format, button) {
+    if (preview) return;
+    button.disabled = true;
+    try {
+      const {downloadWorkoutReport} = await import('/scripts/workout-export.mjs');
+      await downloadWorkoutReport(id, format, api, downloadBlob);
+    } finally { button.disabled = false; }
+  }
   const people = () => OperationsPeople.create({ data, view, actor, service, openForm });
   host.addEventListener("click", async event => {
     const target = event.target.closest("[data-action]");
@@ -85,6 +93,7 @@
         "clear-filter": () => { views[current] = { page: 1, search: "", status: "" }; draw(); },
         member: value => go("members", { memberId: value }), "member-new": () => screens().memberForm(), "member-edit": value => screens().memberForm(value),
         "member-delete": value => openForm(t("회원 삭제 확인"), `<p>${t("회원 명단에서 제외하고 로그인 계정을 정지합니다. 기존 운동·수납·출석 이력은 보존합니다.")}</p>` + U.field("reason", t("삭제 사유"), "", { multiline: true, max: 500 }), (values, key) => service.deleteMember({ ...values, id: value }, key), t("회원 삭제 확정")),
+        "member-start": value => onStartMember?.(value),
         "member-back": () => go("members"), "member-tab": value => { view().tab = value; draw(); document.querySelector(`[data-action="member-tab"][data-id="${value}"]`)?.focus(); },
         "note-new": value => openForm(t("상담·코치 메모"), U.field("content", t("내용"), "", { multiline: true, max: 2000 }), (values, key) => service.addNote({ ...values, member_id: value }, key)),
         "dashboard-visits": () => go("attendance", { date: data.referenceDate }),
@@ -92,6 +101,9 @@
         "dashboard-payments": () => go("payments", { from: `${data.referenceDate.slice(0, 7)}-01`, to: data.referenceDate }),
         "workout-detail": value => { const row = data.workouts.find(item => item.id === value); showDetail(t("운동 기록 상세"), `<p>${t("기록 ID")} ${e(row.id)}</p><p>${t("시작")} ${e(row.started_at)}</p><p>${t("종료")} ${e(row.ended_at || t("진행 중"))}</p><p>${preview ? t("샘플에는 실제 녹화 파일이 없습니다.") : row.has_recording ? t("이 장치에 녹화가 저장돼 있습니다.") : t("이 장치에 녹화 파일이 없습니다.")}</p>`); },
         "recording-play": value => onRecording?.(value),
+        "recording-retry": async value => { target.disabled=true; try { await retryRecordingSave(value); await refresh(); } finally { target.disabled=false; } },
+        "workout-report": async value => exportWorkout(value, 'html', target),
+        "workout-text": async value => exportWorkout(value, 'txt', target),
         "recording-download": async value => { target.disabled = true; try { await onDownload?.(value); } finally { target.disabled = false; } },
         "workout-delete": value => openForm(t("운동 기록 삭제 확인"), `<p>${t("{target}를 삭제합니다. 되돌릴 수 없습니다.", { target: preview ? t("합성 운동 기록") : t("운동 기록과 이 장치의 녹화") })}</p><p>${t("기록 ID")} ${e(value)}</p>`, (_, key) => service.deleteWorkout({ id: value }, key), t("삭제 확정")),
         theme: () => { document.body.dataset.theme = document.body.dataset.theme === "light" ? "dark" : "light"; },

@@ -4,9 +4,7 @@ const CAMERA_SETUP_KEY = "boxing_camera_setup";
 const navItems = [
   ["coach", "운동 세션"],
   ["dashboard", "대시보드"],
-  ["center", "센터 정보"],
   ["members", "회원 관리"],
-  ["staff", "직원"],
   ["attendance", "출석"],
   ["payments", "수납"],
   ["workouts", "운동 기록"],
@@ -34,9 +32,7 @@ const platformAdminNavItems = [
 const centerOwnerNavItems = [
   ["coach", "운동 세션"],
   ["dashboard", "대시보드"],
-  ["center", "센터 정보"],
   ["members", "회원 관리"],
-  ["staff", "직원"],
   ["accounts", "계정 권한"],
   ["attendance", "출석"],
   ["payments", "수납"],
@@ -124,7 +120,7 @@ const authDefaults = {
         placeholder: "가입 유형",
         type: "select",
         options: [
-          ["OWNER", "관리자: 새 센터 생성"],
+          ["OWNER", "센터장: 새 센터 개설"],
           ["MEMBER", "회원: 센터 코드로 가입"],
         ],
       },

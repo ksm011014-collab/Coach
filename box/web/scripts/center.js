@@ -1,7 +1,7 @@
-function renderCenterInfo() {
+function renderCenterInfo(host = $("#viewContent")) {
   const U = OperationsUI;
   const center = state.center;
-  $("#viewContent").innerHTML = `<section class="operations op-embedded"><h2>${t("센터 기본 정보")}</h2><p>${t("로그인 센터:")} ${U.escape(state.user.center_name || center.name)} · ${t("코드")} ${U.escape(state.user.center_code || center.code)}</p><div id="centerShared"></div><form id="centerLocalForm" class="op-form">
+  host.innerHTML = `<section class="operations op-embedded"><h2>${t("센터 기본 정보")}</h2><p>${t("로그인 센터:")} ${U.escape(state.user.center_name || center.name)} · ${t("코드")} ${U.escape(state.user.center_code || center.code)}</p><div id="centerShared"></div><form id="centerLocalForm" class="op-form">
     <fieldset class="op-duration"><legend>${t("기본 라운드 시간")}</legend><div class="op-duration-inputs">
       ${U.field("defaultSessionMinutes", t("분"), center.defaultSessionMinutes, { type: "number" })}
       ${U.field("defaultSessionSeconds", t("초"), center.defaultSessionSeconds, { type: "number" })}
@@ -61,7 +61,8 @@ function renderCenterInfo() {
 }
 
 function renderStaff() {
-  $("#viewContent").innerHTML = `<section class="operations op-embedded"><h2>${t("직원 프로필")}</h2><p>${t("직원 업무 정보 서비스 연결 준비 중입니다.")}</p><a href="/preview.html?enable=1" target="_blank" rel="noopener">${t("개발용 관리 화면 열기")}</a></section>`;
+  accountView.role = "COACH";
+  renderAccounts();
 }
 
 function renderUnconnectedAttendance() {

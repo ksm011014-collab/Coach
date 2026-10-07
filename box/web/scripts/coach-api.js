@@ -46,11 +46,13 @@ window.CoachApi = (() => {
         try {
           const result=await api('/coach/reply',{method:'POST',body:JSON.stringify({...input,request_id:previous.id}),signal:request.signal});
           if (isCurrent()) {
-            target.querySelector('.coach-usage-warning').textContent=result.usage_recorded===false ? t('응답은 받았지만 사용량 저장을 확인하지 못했습니다. 같은 질문을 다시 전송하지 마세요.') : '';
-            await updateUsage();
+            target.querySelector('.coach-usage-warning').textContent=[result.usage_recorded===false ? t('응답은 받았지만 사용량 저장을 확인하지 못했습니다. 같은 질문을 다시 전송하지 마세요.') : '', result.transcript_recorded===false ? t('답변을 받았지만 대화 저장에 실패했습니다. 현재 답변을 복사해 보관하세요.') : ''].filter(Boolean).join(' ');
           }
           return result;
-        } finally { select.disabled=false; }
+        } finally {
+          if (isCurrent()) await updateUsage();
+          select.disabled=false;
+        }
       },
     };
   }

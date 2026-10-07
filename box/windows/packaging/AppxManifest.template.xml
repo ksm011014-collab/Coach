@@ -7,7 +7,7 @@
   <Identity Name="@@PACKAGE_ID@@" Publisher="@@PUBLISHER@@" Version="@@VERSION@@" ProcessorArchitecture="x64" />
   <Properties>
     <DisplayName>@@DISPLAY_NAME@@</DisplayName>
-    <PublisherDisplayName>APEX</PublisherDisplayName>
+    <PublisherDisplayName>JDC</PublisherDisplayName>
     <Description>AI boxing coaching and center management</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>

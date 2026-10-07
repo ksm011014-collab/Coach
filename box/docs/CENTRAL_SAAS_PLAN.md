@@ -50,7 +50,7 @@ The worktree already contained broad uncommitted application changes and generat
 - The account audit table covers only account access changes and requires an account target, so it cannot represent center or subscription changes cleanly.
 - The desktop native bridge parses message types but does not bind accepted messages to an explicitly configured hosted source.
 - The current WebView navigation policy accepts only the local worker origin and has no hosted-mode configuration or fallback policy.
-- Public center-owner signup can create a center without a platform approval workflow. Central mode therefore blocks this path at both the gateway and database trigger; local SQLite mode retains the original flow.
+- Updated September 25: public center-owner signup intentionally creates a new center and its trial subscription. It cannot claim an existing center or create a platform administrator. The previous blanket block is retired by migrations `202609250001` and `202609250002`.
 
 ## Target Boundaries
 

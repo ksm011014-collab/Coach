@@ -18,7 +18,8 @@ function fixture({payload=completeResponse,providerStatus=200,failUsage=false,mi
       }
       throw new Error('Unexpected caller RPC');
     }};
-  const admin={rpc:async(name,args)=>{assert.equal(name,'coach_complete');writes.push(args);return failUsage?{error:{code:'offline'}}:{};}};
+  const transcripts=[];
+  const admin={rpc:async(name,args)=>{if(name==='coach_save_transcript'){transcripts.push(args);return {};}assert.equal(name,'coach_complete');writes.push(args);return failUsage?{error:{code:'offline'}}:{};}};
   const handler=coachHandler({createClient:(url,key)=>key==='service'?admin:caller,
     env:name=>({SUPABASE_URL:'https://test.invalid',SUPABASE_ANON_KEY:'public',SUPABASE_SERVICE_ROLE_KEY:'service',OPENAI_API_KEY:missingKey?'':'secret'})[name],
     timeoutMs:10,fetchImpl:async(url,options)=>{
@@ -27,7 +28,7 @@ function fixture({payload=completeResponse,providerStatus=200,failUsage=false,mi
       return new Response(JSON.stringify(payload),{status:providerStatus});
     }});
   const send=(body=requestBody,auth='Bearer test')=>handler(new Request('https://test.invalid/coach-chat',{method:'POST',headers:{Authorization:auth},body:JSON.stringify(body)}));
-  return {send,calls,writes};
+  return {send,calls,writes,transcripts};
 }
 const normal=fixture();
 const response=await normal.send();
@@ -35,11 +36,23 @@ assert.equal(response.status,200);
 assert.deepEqual((await response.json()).usage,completeResponse.usage);
 assert.equal(normal.calls[0].url,'https://api.openai.com/v1/responses');
 assert.equal(normal.calls[0].body.store,false);
+assert.equal(normal.calls[0].body.reasoning,undefined);
+const briefReasoning=fixture();
+await briefReasoning.send({...requestBody,model:'gpt-5-mini'});
+assert.deepEqual(briefReasoning.calls[0].body.reasoning,{effort:'minimal'});
+assert.deepEqual(briefReasoning.calls[0].body.text,{verbosity:'low'});
+assert.equal(briefReasoning.calls[0].body.max_output_tokens,800);
 assert.match(normal.calls[0].body.instructions,/English/);
 assert.match(normal.calls[0].body.instructions,/duration_seconds":10/);
+assert.match(normal.calls[0].body.instructions,/time WITHOUT reliable tracking/);
+assert.match(normal.calls[0].body.instructions,/evaluated movements, not video frames/);
+assert.match(normal.calls[0].body.instructions,/NOT accuracy and NOT a percentage/);
+assert.doesNotMatch(normal.calls[0].body.instructions,/[가-힣]/);
 assert.doesNotMatch(normal.calls[0].body.instructions,/999999|session_id|user_id/);
 assert.equal(normal.writes[0].p_total,120);
 assert.equal(normal.writes[0].p_status,'completed');
+assert.equal(normal.transcripts[0].p_question,requestBody.question);
+assert.equal(normal.transcripts[0].p_answer,'Try a controlled drill.');
 assert.equal((await normal.send()).status,409);
 assert.equal(normal.calls.length,1);
 const korean=fixture();

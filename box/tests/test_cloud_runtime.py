@@ -62,7 +62,7 @@ class CloudRuntimeTests(unittest.TestCase):
             version = json.load(response)
         self.assertEqual(health["service"], "boxing-coach-cloud")
         self.assertEqual(health["data_mode"], "supabase")
-        self.assertFalse(health["public_center_signup"])
+        self.assertTrue(health["public_center_signup"])
         self.assertGreaterEqual(version["bridge_protocol"], 1)
 
     def test_local_ai_routes_are_not_exposed_by_cloud_server(self):

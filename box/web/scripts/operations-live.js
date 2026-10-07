@@ -21,7 +21,7 @@ function createLiveOperations() {
       const result = {
         referenceDate: new Date().toLocaleDateString("en-CA"),
         members: profiles.map(row => ({ ...row, id: row.user_id, profile_id: row.id, center_id: row.gym_id || row.center_id, joined_on: row.created_at ? iso(row.created_at)?.slice(0, 10) : "알 수 없음", account_status: state.accounts.find(account => account.id === row.user_id)?.status || (row.user_id === userId ? state.user.status : "UNKNOWN") })),
-        workouts: state.sessions.map(row => ({ ...row, member_id: row.user_id, started_at: iso(row.started_at), ended_at: iso(row.ended_at), has_recording: Boolean(state.localRecordings[row.id]) })),
+        workouts: state.sessions.map(row => ({ ...row, member_id: row.user_id, started_at: iso(row.started_at), ended_at: iso(row.ended_at), has_recording: Boolean(state.localRecordings[row.id]), recording_pending: state.localRecordings[row.id]?.persisted === false })),
         products: [], passes: [], attendance: [], payments: [], notes: [], staff: [], activities: [],
       };
       if (operations) Object.assign(result, operations, { operationsConnected: true });
@@ -68,11 +68,40 @@ function createLiveOperations() {
 
 function renderOperationalView(view) {
   const container = document.createElement("div");
+  container.style.gridColumn = "1 / -1";
   $("#viewContent").replaceChildren(container);
   mountOperations({
     host: container, adapter: createLiveOperations(), user: state.user, initialView: view,
-    onNavigate: key => { state.activeView = state.user.role === "MEMBER" && key === "workouts" ? "memberWorkouts" : key; renderNav(); $("#viewTitle").textContent = ({ members: "회원 관리", workouts: "운동 기록", memberships: "회원권", attendance: "출석", payments: "수납" })[key] || "운영"; },
+    onNavigate: key => { state.activeView = state.user.role === "MEMBER" && key === "workouts" ? "memberWorkouts" : key; renderNav(); $("#viewTitle").textContent = t(({ members: "회원 관리", workouts: "운동 기록", memberships: "회원권", attendance: "출석", payments: "수납", dashboard: "대시보드" })[key] || "운영"); syncPanels(key); },
     onRecording: playRecording,
     onDownload: downloadRecording,
+    onStartMember: async userId => {
+      if (state.activeSessionId || state.sessionBusy || window.RoundCoach?.isBlocking()) throw new Error(t('현재 운동을 종료한 뒤 회원을 변경하세요.'));
+      const member = state.members.find(row => row.user_id === userId);
+      if (!member || !["OWNER", "CENTER_OWNER", "COACH"].includes(state.user.role)) throw new Error(t('운동할 회원을 선택해주세요.'));
+      state.selectedMemberId = member.id;
+      state.activeView = 'coach';
+      renderApp();
+      await startSession();
+    },
   });
+  function syncPanels(key) {
+    if (['OWNER', 'CENTER_OWNER', 'COACH'].includes(state.user.role) && key === 'dashboard' && !$('#dashboardCenter')) {
+      const centerHost = document.createElement('div');
+      centerHost.id = 'dashboardCenter';
+      centerHost.style.gridColumn = '1 / -1';
+      $('#viewContent').appendChild(centerHost);
+      renderCenterInfo(centerHost);
+    }
+    if (['OWNER', 'CENTER_OWNER'].includes(state.user.role) && key === 'members' && !$('#staffAccounts')) {
+      const staffHost = document.createElement('section');
+      staffHost.id = 'staffAccounts';
+      staffHost.style.gridColumn = '1 / -1';
+      $('#viewContent').appendChild(staffHost);
+      renderAccounts();
+    }
+    if ($('#dashboardCenter')) $('#dashboardCenter').hidden = key !== 'dashboard';
+    if ($('#staffAccounts')) $('#staffAccounts').hidden = key !== 'members';
+  }
+  syncPanels(view);
 }

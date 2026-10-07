@@ -20,7 +20,7 @@ const desktopBridge = (() => {
         const timeout = setTimeout(() => {
           pending.delete(id);
           reject(new Error(t("Windows 보안 저장소 응답 시간이 초과되었습니다.")));
-        }, 5000);
+        }, type === "speech.synthesize" ? 35000 : 5000);
         pending.set(id, {
           resolve(value) {
             clearTimeout(timeout);
@@ -48,7 +48,7 @@ const desktopBridge = (() => {
       if (platform.workerAvailable === false) {
         throw new Error(t("로컬 worker의 상태를 확인하지 못했습니다. Windows 앱을 다시 시작해주세요."));
       }
-      if (!versionAtLeast(platform.engineVersion || "0.0.0", "0.3.0") || platform.capabilities?.contract_version !== 1) {
+      if (!versionAtLeast(platform.engineVersion || "0.0.0", "0.4.0") || platform.capabilities?.contract_version !== 1) {
         throw new Error(t("로컬 엔진 버전이 오래되었습니다. Windows 앱을 업데이트하세요."));
       }
       return platform;
@@ -58,6 +58,8 @@ const desktopBridge = (() => {
 
 const DESKTOP_LOCAL_API_PATHS = new Set([
   "/recordings/convert",
+  "/speech/transcribe/ko",
+  "/speech/transcribe/en",
 ]);
 
 async function platformApiFetch(path, options = {}) {

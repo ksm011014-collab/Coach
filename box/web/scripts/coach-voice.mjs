@@ -39,7 +39,7 @@ export class CoachVoice {
         if (!current()) return;
         active.started=true;
         this.onState(kind==='listen'?'listening':'playing');
-      },onLevel:level=>{
+      },onProcessing:()=>{if(current()) this.onState('transcribing');},onLevel:level=>{
         if (!current() || kind!=='speak' || !active.started || !Number.isFinite(level)) return;
         clearTimeout(this.levelTimer);
         this.onLevel(Math.max(0,Math.min(1,level)));
@@ -58,7 +58,7 @@ export class CoachVoice {
       return true;
     } catch (error) {
       if (current()) {
-        const reason=active.controller.signal.aborted?'timeout':error.name==='NotAllowedError'?'denied':'error';
+        const reason=active.controller.signal.aborted || error.message==='speech_timeout'?'timeout':error.name==='NotAllowedError'?'denied':['speech_model_missing','speech_no_voice','speech_busy','speech_voice_missing'].includes(error.message)?error.message:'error';
         this.stop();
         this.onState(reason);
       }
@@ -67,5 +67,6 @@ export class CoachVoice {
   }
 
   listen() { return this.run('listen'); }
+  finishInput() { this.provider?.finishInput?.(); }
   speak(text) { return this.run('speak',text); }
 }

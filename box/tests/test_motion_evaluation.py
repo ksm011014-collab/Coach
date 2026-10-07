@@ -27,6 +27,20 @@ class MotionEvaluationTests(unittest.TestCase):
         self.assertIsNone(result['hand_comparison']['error_rate'])
         self.assertIsNone(result['completion_to_score']['p95_ms'])
 
+    def test_unlabelled_intervals_do_not_become_false_positives(self):
+        self.truth['evaluated_intervals'] = [{'start_ms': 500, 'end_ms': 2500}]
+        self.truth['negative_intervals'] = []
+        prediction = {'clip_id': 'synthetic', 'events': [event('known', 'jab', 1000), event('unknown', 'hook', 4000)],
+                      'score_publications': [{'id': 'unknown', 'published_ms': 4500}]}
+        result = evaluate(self.truth, prediction)
+        self.assertEqual(result['excluded_predictions'], 1)
+        self.assertEqual(result['evaluated_ms'], 2000)
+        self.assertEqual(result['per_class']['hook']['fp'], 0)
+        self.assertEqual(result['per_class']['uppercut']['fn'], 1)
+        self.truth['evaluated_intervals'] = [{'start_ms': 1500, 'end_ms': 2500}]
+        with self.assertRaises(ValueError):
+            evaluate(self.truth, prediction)
+
     def test_anatomical_hand_and_annotated_completion_latency(self):
         self.truth['events'][0]['hand'] = 'left'
         self.truth['events'][1]['hand'] = 'right'
