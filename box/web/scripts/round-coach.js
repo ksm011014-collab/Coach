@@ -34,6 +34,12 @@ window.RoundCoach = (() => {
       const {createNativeVoice, loadVoiceSettings} = await import('/scripts/coach-native-voice.mjs');
       const voiceSettings = loadVoiceSettings(localStorage);
       let voiceProvider = activeProvider?.voice;
+      if (!voiceProvider) {
+        try {
+          const {createSupertonicVoice} = await import('/scripts/coach-supertonic-voice.mjs');
+          voiceProvider = await createSupertonicVoice(voiceSettings);
+        } catch (_) {}
+      }
       if (!voiceProvider && typeof desktopBridge !== 'undefined' && desktopBridge) {
         try { voiceProvider = await createNativeVoice(desktopBridge, voiceSettings); } catch (_) {}
       }
@@ -52,6 +58,7 @@ window.RoundCoach = (() => {
       const voiceStatus = target.querySelector('[data-coach-voice-status]');
       let lastAnswer = target.querySelector('[data-coach-summary]').textContent;
       let voiceState = 'idle';
+      const readyVoiceLabel = t('음성 대기') + (voiceProvider?.engine ? ` · ${voiceProvider.engine}` : '');
       voice = new CoachVoice({provider:voiceProvider,inputTimeoutMs:95000,language:window.BoxingI18n?.language || 'ko',onState:state=>{
         if (dialog!==target) return;
         voiceState = state;
@@ -62,6 +69,7 @@ window.RoundCoach = (() => {
         playback.disabled = !busy && !voice?.supports('speak');
         voiceStatus.setAttribute('aria-busy', String(state === 'transcribing' || state === 'preparing-input' || state === 'preparing-output'));
         voiceStatus.textContent = {idle:voice?.supports('listen') || voice?.supports('speak')?t('음성 대기'):t('음성 서비스 미연결'), 'preparing-input':t('마이크 준비 중'), 'preparing-output':t('음성 준비 중'),listening:t('마이크 수집 중 · 입력 중단 가능'),transcribing:t('음성을 텍스트로 변환 중'),speech_model_missing:t('음성인식 모델이 없습니다. 최신 Windows 배포본을 설치하세요.'),speech_no_voice:t('인식된 음성이 없습니다. 다시 말하거나 텍스트를 입력하세요.'),speech_busy:t('이전 음성 변환이 진행 중입니다. 잠시 후 다시 시도하세요.'),speech_voice_missing:t('선택 언어의 음성이 없습니다. Windows 설정의 언어 및 지역에서 음성을 설치하세요.'),playing:t('음성 재생 중'),denied:t('마이크 권한이 거부됐습니다. 텍스트로 질문할 수 있습니다.'),timeout:t('음성 처리 시간이 초과됐습니다.'),error:t('음성 처리 실패 · 다시 시도할 수 있습니다.')}[state];
+        if (state === 'idle' && voice?.supports('speak')) voiceStatus.textContent = readyVoiceLabel;
       },onLevel:level=>{
         if (dialog===target) target.querySelector('.coach-hologram').style.setProperty('--voice-level',String(level));
       },onTranscript:text=>{
@@ -71,7 +79,7 @@ window.RoundCoach = (() => {
         }
       }});
       microphone.disabled = !voice.supports('listen');
-      if (voice.supports('listen') || voice.supports('speak')) voiceStatus.textContent = t('음성 대기');
+      if (voice.supports('listen') || voice.supports('speak')) voiceStatus.textContent = readyVoiceLabel;
       microphone.addEventListener('click',()=>voiceState === 'listening' ? voice?.finishInput() : voice?.listen());
       playback.addEventListener('click',()=>{
         if (['preparing-input','preparing-output','listening','transcribing','playing'].includes(voiceState)) voice?.stop();
@@ -177,7 +185,7 @@ window.RoundCoach = (() => {
     dialog.setAttribute('aria-labelledby', 'roundCoachTitle');
     dialog.innerHTML = `<div class="round-coach-layout">
       <section class="coach-hologram-panel" aria-label="${t("AI 코치 대기")}">
-        <span class="coach-eyebrow">JDC / ${t("라운드 리뷰")}</span>
+        <span class="coach-eyebrow"><img class="coach-brand-icon" src="/brand/seonrang-mark.png" alt="" /> JDC / ${t("라운드 리뷰")}</span>
         <h3>${t("다음 라운드를 준비하는 시간")}</h3>
         <div class="coach-round-duration"><span>${t("운동 시간")}</span><strong data-round-duration></strong></div>
         <dl class="coach-round-metrics"><div><dt>${t("라운드 점수")}</dt><dd data-round-points></dd></div><div><dt>${t("평균 수행 품질")}</dt><dd data-round-quality></dd></div></dl>

@@ -124,7 +124,7 @@ artifacts/
 
 ## 비용 발생 지점
 
-아이콘 원본은 `../web/icons/app-icon.svg`다. 수정 후 프로젝트 루트에서 `node tools/generate_app_icon.cjs`를 실행하면 Windows용 `Assets/JDC.png`와 16~256px ICO가 생성된다(Playwright와 Chrome 필요). 이 명령은 실행파일을 만들지 않는다. 다음 명시적 배포 생성 시 실행파일·창·패키지에 아이콘을 포함하며 표시 이름과 새 바로가기는 JDC다. 내부 실행파일/패키지 식별자와 데이터 경로는 호환성을 위해 유지한다.
+아이콘 원본은 `../web/brand/seonrang-mark.png`다. `box/`에서 `node tools/generate_app_icon.cjs`를 실행하면 웹 SVG/PNG, Android 런처 PNG, Windows용 `Assets/JDC.png`와 16~256px ICO가 생성된다(Playwright와 Chrome 필요). 이 명령은 실행파일을 만들지 않는다. 다음 명시적 배포 생성 시 실행파일·창·패키지에 아이콘을 포함하며 표시 이름과 새 바로가기는 JDC다. 내부 실행파일/패키지 식별자와 데이터 경로는 호환성을 위해 유지한다.
 
 JDC 배포본과 인수 상태는 `../docs/JDC_PROGRESS.md`를 따른다. 무료 Windows 설치 음성 TTS와 로컬 whisper.cpp 한국어/영어 STT를 포함하며 텍스트 챗봇 사용량은 별도다. 필요한 TTS 언어는 Windows 언어/음성 설정에서 설치한다. STT 엔진·모델·라이선스는 `worker/speech`에 포함된다.
 

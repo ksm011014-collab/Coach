@@ -110,3 +110,4 @@
 .round-coach [data-coach-voice-status][aria-busy="true"]::before { content: ''; width: 18px; height: 18px; flex: 0 0 18px; border: 2px solid #38545e; border-top-color: #7dd7cd; border-radius: 50%; animation: coach-loading 0.8s linear infinite; }
 @keyframes coach-loading { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .holo-rotor { animation: none; } .coach-core, .holo-resonance { transform: none; transition: none; } .round-coach [aria-busy="true"]::before { animation: none; } }
+.coach-brand-icon { width: 24px; height: 24px; object-fit: contain; vertical-align: middle; margin-right: 5px; }

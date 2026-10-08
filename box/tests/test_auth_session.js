@@ -117,7 +117,7 @@ const response = (status,body={}) => ({status,ok:status>=200&&status<300,json:as
   assert.equal(cards.every(card=>card.inert),true);
   assert.equal(classes.has('login-entering'),true);
   const timer = [...timers.values()][0];
-  assert.equal(timer.delay,3000);
+  assert.equal(timer.delay,10000);
   timer.callback();
   assert.equal(await entering,true);
   intro.stop();

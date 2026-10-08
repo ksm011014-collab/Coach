@@ -1,4 +1,4 @@
-const CACHE_NAME = "boxingcoach-shell-2026-10-07-hologram-1";
+const CACHE_NAME = "boxingcoach-shell-2026-10-08-user-video-1";
 const APP_SHELL = [
   "/",
   "/index.html",
@@ -18,6 +18,12 @@ const APP_SHELL = [
   "/manifest.webmanifest",
   "/icons/app-icon.svg",
   "/icons/app-icon-maskable.svg",
+  "/brand/seonrang-mark.png",
+  "/brand/seonrang-assembly.mp4",
+  "/icons/app-icon-192.png",
+  "/icons/app-icon-512.png",
+  "/icons/app-icon-maskable-512.png",
+  "/icons/apple-touch-icon.png",
   "/scripts/accounts.js",
   "/scripts/android-offline.js",
   "/scripts/auth-shell.js",

@@ -168,10 +168,7 @@ button:hover {
   flex: 0 0 auto;
   width: 40px;
   aspect-ratio: 1 / 1;
-  border: 1px solid var(--accent);
-  border-radius: 50%;
-  background: conic-gradient(from 40deg, transparent, rgba(46, 232, 255, 0.85), transparent 58%);
-  box-shadow: rgba(46, 232, 255, 0.45) 0px 0px 26px;
+  background: url('/brand/seonrang-mark.png') center / contain no-repeat;
 }
 
 .brand strong {
@@ -343,7 +340,6 @@ nav {
   content: none;
 }
 
-.login-panel::before {
   content: "";
   position: absolute;
   inset: 0px;
@@ -490,13 +486,10 @@ h1 {
 }
 
 .auth-logo-mark {
-  width: 19px;
-  height: 19px;
-  border-width: 4px;
-  border-style: solid;
-  border-color: rgb(36, 59, 255) rgb(46, 232, 255) rgb(36, 59, 255) rgb(36, 59, 255);
-  border-image: none;
-  border-radius: 50%;
+  flex: 0 0 42px;
+  width: 42px;
+  height: 42px;
+  background: url('/brand/seonrang-mark.png') center / contain no-repeat;
 }
 
 .auth-logo strong {
@@ -1717,6 +1710,4 @@ h2 {
 .login-panel > .intro, .login-panel > .auth-card { transition: opacity .45s ease, transform .45s ease; }
 .login-entering > .intro, .login-entering > .auth-card { opacity: 0; transform: translateY(-12px); pointer-events: none; }
 .login-entering::before { opacity: 0; transition: opacity .45s ease; }
-.login-entering .login-warp { animation: login-warp-enter 3s cubic-bezier(.3,0,.85,1) both; }
-@keyframes login-warp-enter { 0%, 15% { transform: scale(1); } 100% { transform: scale(4); } }
 @media (prefers-reduced-motion: reduce) { .login-panel > .intro, .login-panel > .auth-card { transition: none; } .login-entering .login-warp { animation: none; } }
